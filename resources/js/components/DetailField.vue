@@ -85,13 +85,21 @@ export default {
     },
     data () {
       let locations = []
-      for (let i = 0; i < 100; i++) {
+      for (var i in vm.markers) {
+      var markerID = vm.markers[i].options.title;
+      var position = vm.markers[i].getLatLng();
+      if (markerID == id) {
+        vm.map.setView(position, 15);
+        vm.markers[i].openPopup();
+      };
+    }
+      /*for (let i = 0; i < 100; i++) {
         locations.push({
           id: i,
           latlng: latLng(rand(-34.9205), rand(-57.953646)),
           text: 'Hola ' + i
         })
-      }
+      }*/
       let customicon = icon(Object.assign({},
         Icon.Default.prototype.options,
         //{iconUrl}
