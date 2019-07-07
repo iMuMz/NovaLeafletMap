@@ -6,6 +6,8 @@ use Laravel\Nova\Fields\Field;
 
 class LeafletMap extends Field
 {
+    public $showOnUpdate = false;
+    public $showOnIndex = false;
     /**
      * The field's component.
      *
