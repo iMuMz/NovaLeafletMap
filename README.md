@@ -11,6 +11,8 @@ composer require otrsw/leaflet-map
 ### Usage
 
 ```
+use Otrsw\LeafletMap\LeafletMap
+...
 LeafletMap::make('Map View','map')
 ```
 ### Available Methods
