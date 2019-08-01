@@ -48,24 +48,12 @@ class LeafletMap extends Field
             'popupName' => $popupName
         ]);
     }
-    public function point($lat,$lon) {
+    public function point($latitude,$longitude) {
         return $this->withMeta([
             'latitude' => $latitude,
             'longitude' => $longitude
         ]);
     }
-    /*public function latitude($latitude){
-        $this->attribute = null;
-        return $this->withMeta([
-            'latitude' => $latitude
-        ]);
-    }
-    public function longitude($longitude){
-        $this->attribute = null;
-        
-        return $this->withMeta([
-            'longitude' => $longitude
-        ]);
-    }*/
+
 
 }
