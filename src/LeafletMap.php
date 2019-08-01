@@ -25,6 +25,12 @@ class LeafletMap extends Field
             'zoom' => $zoom
         ]);
     }
+    public function geoJson($geoJson){
+
+        return $this->withMeta([
+            'geoJson' => $geoJson
+        ]);
+    }
     public function mapIconUrl($mapIconUrl){
 
         return $this->withMeta([
@@ -42,7 +48,13 @@ class LeafletMap extends Field
             'popupName' => $popupName
         ]);
     }
-    public function latitude($latitude){
+    public function point($lat,$lon) {
+        return $this->withMeta([
+            'latitude' => $lat,
+            'longitude' => $lon
+        ]);
+    }
+    /*public function latitude($latitude){
         $this->attribute = null;
         return $this->withMeta([
             'latitude' => $latitude
@@ -54,6 +66,6 @@ class LeafletMap extends Field
         return $this->withMeta([
             'longitude' => $longitude
         ]);
-    }
+    }*/
 
 }
