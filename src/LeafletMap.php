@@ -50,8 +50,8 @@ class LeafletMap extends Field
     }
     public function point($lat,$lon) {
         return $this->withMeta([
-            'latitude' => $lat,
-            'longitude' => $lon
+            'latitude' => $latitude,
+            'longitude' => $longitude
         ]);
     }
     /*public function latitude($latitude){
