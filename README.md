@@ -16,6 +16,7 @@ use Otrsw\LeafletMap\LeafletMap
 LeafletMap::make('Map View','map')
 ```
 ### Available Methods
+You must set the height for the map to show.
 #### Zoom
 ```
 LeafletMap::make('Map View','map')
@@ -30,11 +31,12 @@ LeafletMap::make('Map View','map')
 ```
 LeafletMap::make('Map View','map')
 ->type('LatLon')
-->point('-6.081689','145.391881')
+->point($this->my_latitude,$this->my_longitude)
 ```
 #### GeoJSON
 ```
 LeafletMap::make('Map View','map')
+->type('GeoJson')
 ->geoJson('')
 ```
 #### Popup
