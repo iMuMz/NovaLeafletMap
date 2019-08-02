@@ -55,5 +55,12 @@ class LeafletMap extends Field
         ]);
     }
 
+    public function center($centerLat,$centerLon) {
+        return $this->withMeta([
+            'centerLat' => $centerLat,
+            'centerLon' => $centerLon
+        ]);
+    }
+
 
 }
