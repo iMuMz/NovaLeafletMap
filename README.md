@@ -13,31 +13,31 @@ composer require otrsw/leaflet-map
 ```
 use Otrsw\LeafletMap\LeafletMap
 ...
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ```
 ### Available Methods
 You must set the height for the map to show.
 #### Zoom
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->zoom(8)
 ```
 #### Height
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->height('400px')
 ```
 #### LatLon
 The map will automatically center to the Lat/Lon provided.
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->type('LatLon')
 ->point($this->my_latitude,$this->my_longitude)
 ```
 #### GeoJSON
 You have to manually set the GeoJson center.
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->type('GeoJson')
 ->geoJson('')
 ->center('-6.081689','145.391881')
@@ -64,11 +64,11 @@ LeafletMap::make('Map View','map')
 
 #### Popup
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->popupName('My Popup Value')
 ```
 #### Custom Marker Icon
 ```
-LeafletMap::make('Map View','map')
+LeafletMap::make('Map View')
 ->mapIconUrl('/images/marker-icon.png')
 ```
