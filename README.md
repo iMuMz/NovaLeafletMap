@@ -3,6 +3,8 @@
 # NovaLeafletMap
 Custom [Laravel Nova](https://nova.laravel.com/) map field using [Vue2Leaflet](https://korigan.github.io/Vue2Leaflet). Supports marker clustering, height, zoom, latitude and longitude coordinates, GeoJSON, marker popup and custom marker icon.
 
+![image](https://user-images.githubusercontent.com/22936672/62364289-5cfacf80-b521-11e9-8c98-584c3978573d.png)
+
 ### Installation
 
 ```
