@@ -28,19 +28,47 @@ LeafletMap::make('Map View','map')
 ->height('400px')
 ```
 #### LatLon
+The map will automatically center to the Lat/Lon provided.
 ```
 LeafletMap::make('Map View','map')
 ->type('LatLon')
 ->point($this->my_latitude,$this->my_longitude)
 ```
 #### GeoJSON
+You have to manually set the GeoJson center.
 ```
 LeafletMap::make('Map View','map')
 ->type('GeoJson')
 ->geoJson('')
+->center('-6.081689','145.391881')
 ```
+#### GeoJson Example 
+```
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          23.8623046875,
+          -30.221101852485987
+        ]
+      }
+    }
+  ]
+}
+```
+
 #### Popup
 ```
 LeafletMap::make('Map View','map')
 ->popupName('My Popup Value')
+```
+#### Custom Marker Icon
+```
+LeafletMap::make('Map View','map')
+->mapIconUrl('/images/marker-icon.png')
 ```
