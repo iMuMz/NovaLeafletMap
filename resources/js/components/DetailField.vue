@@ -140,13 +140,9 @@ export default {
             popupName = this.field.popupName
             //console.log(this.field.popupName)
      
-      /*let customicon = icon(Object.assign({},
-        Icon.Default.prototype.options,
-        //{iconUrl}
-      ))*/
+      
       return {
         options : {
-
         onEachFeature: function (feature, layer) {
             //console.log("type: " + featureType)
             if (featureType == 'LatLon') {
@@ -155,6 +151,7 @@ export default {
             } else if (featureType == 'GeoJson') {
             layer.bindPopup(feature.properties[popupName])
             }
+            //console.log(popupName)
           }
         },
         geoJsons,
@@ -177,7 +174,7 @@ export default {
     },
     mounted() {
       setTimeout(() => {
-        console.log('done')
+        //console.log('done')
         this.$nextTick(() =>{
           this.clusterOptions = { disableClusteringAtZoom: 11 }
         });
@@ -188,5 +185,11 @@ export default {
 <style>
 .leaflet-control-layers-toggle {
     background-image: url('/images/layers.png');
+}
+.leaflet-popup-content-wrapper {
+    border-radius: 1px;
+}
+.leaflet-top.leaflet-left .leaflet-control-zoom {
+    box-shadow: 0 0 7px #999!important;
 }
 </style>
