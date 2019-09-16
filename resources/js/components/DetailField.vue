@@ -86,6 +86,7 @@ export default {
       var popupName
       let geoJsons = []
       let featureType = this.field.type
+      //let htmlPopup = this.field.html
 
       var iniLocation = ''
 
@@ -191,5 +192,8 @@ export default {
 }
 .leaflet-top.leaflet-left .leaflet-control-zoom {
     box-shadow: 0 0 7px #999!important;
+}
+.vue2leaflet-map {
+    z-index: 1;
 }
 </style>

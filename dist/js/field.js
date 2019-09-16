@@ -17677,7 +17677,7 @@ exports = module.exports = __webpack_require__(1)(false);
 
 
 // module
-exports.push([module.i, "\n.leaflet-control-layers-toggle {\n    background-image: url('/images/layers.png');\n}\n.leaflet-popup-content-wrapper {\n    border-radius: 1px;\n}\n.leaflet-top.leaflet-left .leaflet-control-zoom {\n    -webkit-box-shadow: 0 0 7px #999!important;\n            box-shadow: 0 0 7px #999!important;\n}\n", ""]);
+exports.push([module.i, "\n.leaflet-control-layers-toggle {\n    background-image: url('/images/layers.png');\n}\n.leaflet-popup-content-wrapper {\n    border-radius: 1px;\n}\n.leaflet-top.leaflet-left .leaflet-control-zoom {\n    -webkit-box-shadow: 0 0 7px #999!important;\n            box-shadow: 0 0 7px #999!important;\n}\n.vue2leaflet-map {\n    z-index: 1;\n}\n", ""]);
 
 // exports
 
@@ -18047,6 +18047,7 @@ __WEBPACK_IMPORTED_MODULE_4_leaflet__["Icon"].Default.mergeOptions({
         var popupName;
         var geoJsons = [];
         var featureType = this.field.type;
+        //let htmlPopup = this.field.html
 
         var iniLocation = '';
 
