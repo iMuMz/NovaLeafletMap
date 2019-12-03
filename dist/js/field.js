@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 7);
+/******/ 	return __webpack_require__(__webpack_require__.s = 47);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -68,8 +68,8 @@
 /***/ (function(module, exports, __webpack_require__) {
 
 /* @preserve
- * Leaflet 1.5.1+build.2e3e0ff, a JS library for interactive maps. http://leafletjs.com
- * (c) 2010-2018 Vladimir Agafonkin, (c) 2010-2011 CloudMade
+ * Leaflet 1.6.0, a JS library for interactive maps. http://leafletjs.com
+ * (c) 2010-2019 Vladimir Agafonkin, (c) 2010-2011 CloudMade
  */
 
 (function (global, factory) {
@@ -78,7 +78,7 @@
 	(factory((global.L = {})));
 }(this, (function (exports) { 'use strict';
 
-var version = "1.5.1+build.2e3e0ffb";
+var version = "1.6.0";
 
 /*
  * @namespace Util
@@ -196,8 +196,8 @@ function falseFn() { return false; }
 // @function formatNum(num: Number, digits?: Number): Number
 // Returns the number `num` rounded to `digits` decimals, or to 6 decimals by default.
 function formatNum(num, digits) {
-	digits = (digits === undefined ? 6 : digits);
-	return +(Math.round(num + ('e+' + digits)) + ('e-' + digits));
+	var pow = Math.pow(10, (digits === undefined ? 6 : digits));
+	return Math.round(num * pow) / pow;
 }
 
 // @function trim(str: String): String
@@ -1975,7 +1975,7 @@ var msPointer = !window.PointerEvent && window.MSPointerEvent;
 
 // @property pointer: Boolean
 // `true` for all browsers supporting [pointer events](https://msdn.microsoft.com/en-us/library/dn433244%28v=vs.85%29.aspx).
-var pointer = !!(window.PointerEvent || msPointer);
+var pointer = !webkit && !!(window.PointerEvent || msPointer);
 
 // @property touch: Boolean
 // `true` for all browsers supporting [touch events](https://developer.mozilla.org/docs/Web/API/Touch_events).
@@ -1996,6 +1996,23 @@ var mobileGecko = mobile && gecko;
 // `true` for browsers on a high-resolution "retina" screen or on any screen when browser's display zoom is more than 100%.
 var retina = (window.devicePixelRatio || (window.screen.deviceXDPI / window.screen.logicalXDPI)) > 1;
 
+// @property passiveEvents: Boolean
+// `true` for browsers that support passive events.
+var passiveEvents = (function () {
+	var supportsPassiveOption = false;
+	try {
+		var opts = Object.defineProperty({}, 'passive', {
+			get: function () {
+				supportsPassiveOption = true;
+			}
+		});
+		window.addEventListener('testPassiveEventSupport', falseFn, opts);
+		window.removeEventListener('testPassiveEventSupport', falseFn, opts);
+	} catch (e) {
+		// Errors can safely be ignored since this is only a browser support test.
+	}
+	return supportsPassiveOption;
+});
 
 // @property canvas: Boolean
 // `true` when the browser supports [`<canvas>`](https://developer.mozilla.org/docs/Web/API/Canvas_API).
@@ -2058,6 +2075,7 @@ var Browser = (Object.freeze || Object)({
 	mobileOpera: mobileOpera,
 	mobileGecko: mobileGecko,
 	retina: retina,
+	passiveEvents: passiveEvents,
 	canvas: canvas,
 	svg: svg,
 	vml: vml
@@ -2252,8 +2270,8 @@ function addDoubleTapListener(obj, handler, id) {
 	obj[_pre + _touchend + id] = onTouchEnd;
 	obj[_pre + 'dblclick' + id] = handler;
 
-	obj.addEventListener(_touchstart, onTouchStart, false);
-	obj.addEventListener(_touchend, onTouchEnd, false);
+	obj.addEventListener(_touchstart, onTouchStart, passiveEvents ? {passive: false} : false);
+	obj.addEventListener(_touchend, onTouchEnd, passiveEvents ? {passive: false} : false);
 
 	// On some platforms (notably, chrome<55 on win10 + touchscreen + mouse),
 	// the browser doesn't fire touchend/pointerup events but does fire
@@ -2269,8 +2287,8 @@ function removeDoubleTapListener(obj, id) {
 	    touchend = obj[_pre + _touchend + id],
 	    dblclick = obj[_pre + 'dblclick' + id];
 
-	obj.removeEventListener(_touchstart, touchstart, false);
-	obj.removeEventListener(_touchend, touchend, false);
+	obj.removeEventListener(_touchstart, touchstart, passiveEvents ? {passive: false} : false);
+	obj.removeEventListener(_touchend, touchend, passiveEvents ? {passive: false} : false);
 	if (!edge) {
 		obj.removeEventListener('dblclick', dblclick, false);
 	}
@@ -2745,7 +2763,7 @@ function addOne(obj, type, fn, context) {
 	} else if ('addEventListener' in obj) {
 
 		if (type === 'mousewheel') {
-			obj.addEventListener('onwheel' in obj ? 'wheel' : 'mousewheel', handler, false);
+			obj.addEventListener('onwheel' in obj ? 'wheel' : 'mousewheel', handler, passiveEvents ? {passive: false} : false);
 
 		} else if ((type === 'mouseenter') || (type === 'mouseleave')) {
 			handler = function (e) {
@@ -2790,7 +2808,7 @@ function removeOne(obj, type, fn, context) {
 	} else if ('removeEventListener' in obj) {
 
 		if (type === 'mousewheel') {
-			obj.removeEventListener('onwheel' in obj ? 'wheel' : 'mousewheel', handler, false);
+			obj.removeEventListener('onwheel' in obj ? 'wheel' : 'mousewheel', handler, passiveEvents ? {passive: false} : false);
 
 		} else {
 			obj.removeEventListener(
@@ -4680,18 +4698,21 @@ var Map = Evented.extend({
 			}
 		}, this);
 
-		this.on('load moveend', function () {
-			var c = this.getCenter(),
-			    z = this.getZoom();
-			setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
-		}, this);
+		this.on('load moveend', this._animMoveEnd, this);
 
 		this._on('unload', this._destroyAnimProxy, this);
 	},
 
 	_destroyAnimProxy: function () {
 		remove(this._proxy);
+		this.off('load moveend', this._animMoveEnd, this);
 		delete this._proxy;
+	},
+
+	_animMoveEnd: function () {
+		var c = this.getCenter(),
+		    z = this.getZoom();
+		setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
 	},
 
 	_catchTransitionEnd: function (e) {
@@ -4743,6 +4764,7 @@ var Map = Evented.extend({
 			addClass(this._mapPane, 'leaflet-zoom-anim');
 		}
 
+		// @section Other Events
 		// @event zoomanim: ZoomAnimEvent
 		// Fired at least once per zoom animation. For continuous zoom, like pinch zooming, fired once per frame during zoom.
 		this.fire('zoomanim', {
@@ -5376,7 +5398,7 @@ var Layers = Control.extend({
 
 
 // @factory L.control.layers(baselayers?: Object, overlays?: Object, options?: Control.Layers options)
-// Creates an attribution control with the given layers. Base layers will be switched with radio buttons, while overlays will be switched with checkboxes. Note that all base layers should be passed in the base layers object, but only one should be added to the map during map instantiation.
+// Creates a layers control with the given layers. Base layers will be switched with radio buttons, while overlays will be switched with checkboxes. Note that all base layers should be passed in the base layers object, but only one should be added to the map during map instantiation.
 var layers = function (baseLayers, overlays, options) {
 	return new Layers(baseLayers, overlays, options);
 };
@@ -7722,7 +7744,10 @@ var Marker = Layer.extend({
 	},
 
 	_setPos: function (pos) {
-		setPosition(this._icon, pos);
+
+		if (this._icon) {
+			setPosition(this._icon, pos);
+		}
 
 		if (this._shadow) {
 			setPosition(this._shadow, pos);
@@ -7734,7 +7759,9 @@ var Marker = Layer.extend({
 	},
 
 	_updateZIndex: function (offset) {
-		this._icon.style.zIndex = this._zIndex + offset;
+		if (this._icon) {
+			this._icon.style.zIndex = this._zIndex + offset;
+		}
 	},
 
 	_animateZoom: function (opt) {
@@ -7919,7 +7946,7 @@ var Path = Layer.extend({
 		setOptions(this, style);
 		if (this._renderer) {
 			this._renderer._updateStyle(this);
-			if (this.options.stroke && style.hasOwnProperty('weight')) {
+			if (this.options.stroke && style && style.hasOwnProperty('weight')) {
 				this._updateBounds();
 			}
 		}
@@ -7989,9 +8016,13 @@ var CircleMarker = Path.extend({
 	// @method setLatLng(latLng: LatLng): this
 	// Sets the position of a circle marker to a new location.
 	setLatLng: function (latlng) {
+		var oldLatLng = this._latlng;
 		this._latlng = toLatLng(latlng);
 		this.redraw();
-		return this.fire('move', {latlng: this._latlng});
+
+		// @event move: Event
+		// Fired when the marker is moved via [`setLatLng`](#circlemarker-setlatlng). Old and new coordinates are included in event arguments as `oldLatLng`, `latlng`.
+		return this.fire('move', {oldLatLng: oldLatLng, latlng: this._latlng});
 	},
 
 	// @method getLatLng(): LatLng
@@ -8738,6 +8769,9 @@ var GeoJSON = FeatureGroup.extend({
 	 * @option coordsToLatLng: Function = *
 	 * A `Function` that will be used for converting GeoJSON coordinates to `LatLng`s.
 	 * The default is the `coordsToLatLng` static method.
+	 *
+	 * @option markersInheritOptions: Boolean = false
+	 * Whether default Markers for "Point" type Features inherit from group options.
 	 */
 
 	initialize: function (geojson, options) {
@@ -8787,9 +8821,13 @@ var GeoJSON = FeatureGroup.extend({
 		return this.addLayer(layer);
 	},
 
-	// @method resetStyle( <Path> layer ): this
+	// @method resetStyle( <Path> layer? ): this
 	// Resets the given vector layer's style to the original GeoJSON style, useful for resetting style after hover events.
+	// If `layer` is omitted, the style of all features in the current layer is reset.
 	resetStyle: function (layer) {
+		if (layer === undefined) {
+			return this.eachLayer(this.resetStyle, this);
+		}
 		// reset any custom styles
 		layer.options = extend({}, layer.defaultOptions);
 		this._setLayerStyle(layer, this.options.style);
@@ -8837,12 +8875,12 @@ function geometryToLayer(geojson, options) {
 	switch (geometry.type) {
 	case 'Point':
 		latlng = _coordsToLatLng(coords);
-		return pointToLayer ? pointToLayer(geojson, latlng) : new Marker(latlng);
+		return _pointToLayer(pointToLayer, geojson, latlng, options);
 
 	case 'MultiPoint':
 		for (i = 0, len = coords.length; i < len; i++) {
 			latlng = _coordsToLatLng(coords[i]);
-			layers.push(pointToLayer ? pointToLayer(geojson, latlng) : new Marker(latlng));
+			layers.push(_pointToLayer(pointToLayer, geojson, latlng, options));
 		}
 		return new FeatureGroup(layers);
 
@@ -8873,6 +8911,12 @@ function geometryToLayer(geojson, options) {
 	default:
 		throw new Error('Invalid GeoJSON object.');
 	}
+}
+
+function _pointToLayer(pointToLayerFn, geojson, latlng, options) {
+	return pointToLayerFn ?
+		pointToLayerFn(geojson, latlng) :
+		new Marker(latlng, options && options.markersInheritOptions && options);
 }
 
 // @function coordsToLatLng(coords: Array): LatLng
@@ -8958,6 +9002,7 @@ var PointToGeoJSON = {
 };
 
 // @namespace Marker
+// @section Other methods
 // @method toGeoJSON(precision?: Number): Object
 // `precision` is the number of decimal places for coordinates.
 // The default value is 6 places.
@@ -9391,6 +9436,7 @@ var VideoOverlay = ImageOverlay.extend({
 
 		addClass(vid, 'leaflet-image-layer');
 		if (this._zoomAnimated) { addClass(vid, 'leaflet-zoom-animated'); }
+		if (this.options.className) { addClass(vid, this.options.className); }
 
 		vid.onselectstart = falseFn;
 		vid.onmousemove = falseFn;
@@ -9448,9 +9494,12 @@ function videoOverlay(video, bounds, options) {
  * @example
  *
  * ```js
- * var element = '<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="https://mdn.mozillademos.org/files/6457/mdn_logo_only_color.png" height="200" width="200"/></svg>',
- * 		 elementBounds = [ [ 32, -130 ], [ 13, -100 ] ];
- * L.svgOverlay(element, elementBounds).addTo(map);
+ * var svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+ * svgElement.setAttribute('xmlns', "http://www.w3.org/2000/svg");
+ * svgElement.setAttribute('viewBox', "0 0 200 200");
+ * svgElement.innerHTML = '<rect width="200" height="200"/><rect x="75" y="23" width="50" height="50" style="fill:red"/><rect x="75" y="123" width="50" height="50" style="fill:#0013ff"/>';
+ * var svgElementBounds = [ [ 32, -130 ], [ 13, -100 ] ];
+ * L.svgOverlay(svgElement, svgElementBounds).addTo(map);
  * ```
  */
 
@@ -9460,6 +9509,7 @@ var SVGOverlay = ImageOverlay.extend({
 
 		addClass(el, 'leaflet-image-layer');
 		if (this._zoomAnimated) { addClass(el, 'leaflet-zoom-animated'); }
+		if (this.options.className) { addClass(el, this.options.className); }
 
 		el.onselectstart = falseFn;
 		el.onmousemove = falseFn;
@@ -12181,7 +12231,7 @@ var Canvas = Renderer.extend({
 	_initContainer: function () {
 		var container = this._container = document.createElement('canvas');
 
-		on(container, 'mousemove', throttle(this._onMouseMove, 32, this), this);
+		on(container, 'mousemove', this._onMouseMove, this);
 		on(container, 'click dblclick mousedown mouseup contextmenu', this._onClick, this);
 		on(container, 'mouseout', this._handleMouseOut, this);
 
@@ -12491,10 +12541,15 @@ var Canvas = Renderer.extend({
 			removeClass(this._container, 'leaflet-interactive');
 			this._fireEvent([layer], e, 'mouseout');
 			this._hoveredLayer = null;
+			this._mouseHoverThrottled = false;
 		}
 	},
 
 	_handleMouseHover: function (e, point) {
+		if (this._mouseHoverThrottled) {
+			return;
+		}
+
 		var layer, candidateHoveredLayer;
 
 		for (var order = this._drawFirst; order; order = order.next) {
@@ -12517,6 +12572,11 @@ var Canvas = Renderer.extend({
 		if (this._hoveredLayer) {
 			this._fireEvent([this._hoveredLayer], e);
 		}
+
+		this._mouseHoverThrottled = true;
+		setTimeout(L.bind(function () {
+			this._mouseHoverThrottled = false;
+		}, this), 32);
 	},
 
 	_fireEvent: function (layers, e, type) {
@@ -14093,6 +14153,241 @@ window.L = exports;
 /* 1 */
 /***/ (function(module, exports) {
 
+// https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
+var global = module.exports = typeof window != 'undefined' && window.Math == Math
+  ? window : typeof self != 'undefined' && self.Math == Math ? self
+  // eslint-disable-next-line no-new-func
+  : Function('return this')();
+if (typeof __g == 'number') __g = global; // eslint-disable-line no-undef
+
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports) {
+
+var hasOwnProperty = {}.hasOwnProperty;
+module.exports = function (it, key) {
+  return hasOwnProperty.call(it, key);
+};
+
+
+/***/ }),
+/* 3 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var dP = __webpack_require__(4);
+var createDesc = __webpack_require__(15);
+module.exports = __webpack_require__(5) ? function (object, key, value) {
+  return dP.f(object, key, createDesc(1, value));
+} : function (object, key, value) {
+  object[key] = value;
+  return object;
+};
+
+
+/***/ }),
+/* 4 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var anObject = __webpack_require__(13);
+var IE8_DOM_DEFINE = __webpack_require__(37);
+var toPrimitive = __webpack_require__(22);
+var dP = Object.defineProperty;
+
+exports.f = __webpack_require__(5) ? Object.defineProperty : function defineProperty(O, P, Attributes) {
+  anObject(O);
+  P = toPrimitive(P, true);
+  anObject(Attributes);
+  if (IE8_DOM_DEFINE) try {
+    return dP(O, P, Attributes);
+  } catch (e) { /* empty */ }
+  if ('get' in Attributes || 'set' in Attributes) throw TypeError('Accessors not supported!');
+  if ('value' in Attributes) O[P] = Attributes.value;
+  return O;
+};
+
+
+/***/ }),
+/* 5 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// Thank's IE8 for his funny defineProperty
+module.exports = !__webpack_require__(14)(function () {
+  return Object.defineProperty({}, 'a', { get: function () { return 7; } }).a != 7;
+});
+
+
+/***/ }),
+/* 6 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// to indexed object, toObject with fallback for non-array-like ES3 strings
+var IObject = __webpack_require__(122);
+var defined = __webpack_require__(21);
+module.exports = function (it) {
+  return IObject(defined(it));
+};
+
+
+/***/ }),
+/* 7 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var store = __webpack_require__(26)('wks');
+var uid = __webpack_require__(16);
+var Symbol = __webpack_require__(1).Symbol;
+var USE_SYMBOL = typeof Symbol == 'function';
+
+var $exports = module.exports = function (name) {
+  return store[name] || (store[name] =
+    USE_SYMBOL && Symbol[name] || (USE_SYMBOL ? Symbol : uid)('Symbol.' + name));
+};
+
+$exports.store = store;
+
+
+/***/ }),
+/* 8 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__utils_utils__ = __webpack_require__(69);
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "debounce", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["c"]; });
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "capitalizeFirstLetter", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["a"]; });
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "propsBinder", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["f"]; });
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "collectionCleaner", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["b"]; });
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "optionsMerger", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["e"]; });
+/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "findRealParent", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["d"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__mixins_Circle__ = __webpack_require__(70);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "CircleMixin", function() { return __WEBPACK_IMPORTED_MODULE_1__mixins_Circle__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2__mixins_Control__ = __webpack_require__(71);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "ControlMixin", function() { return __WEBPACK_IMPORTED_MODULE_2__mixins_Control__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3__mixins_GridLayer__ = __webpack_require__(72);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "GridLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_3__mixins_GridLayer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4__mixins_ImageOverlay__ = __webpack_require__(73);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "ImageOverlayMixin", function() { return __WEBPACK_IMPORTED_MODULE_4__mixins_ImageOverlay__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5__mixins_InteractiveLayer__ = __webpack_require__(74);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "InteractiveLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_5__mixins_InteractiveLayer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__mixins_Layer__ = __webpack_require__(75);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_6__mixins_Layer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7__mixins_LayerGroup__ = __webpack_require__(76);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LayerGroupMixin", function() { return __WEBPACK_IMPORTED_MODULE_7__mixins_LayerGroup__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8__mixins_Options__ = __webpack_require__(77);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "OptionsMixin", function() { return __WEBPACK_IMPORTED_MODULE_8__mixins_Options__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__mixins_Path__ = __webpack_require__(78);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PathMixin", function() { return __WEBPACK_IMPORTED_MODULE_9__mixins_Path__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_10__mixins_Polygon__ = __webpack_require__(79);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PolygonMixin", function() { return __WEBPACK_IMPORTED_MODULE_10__mixins_Polygon__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_11__mixins_Polyline__ = __webpack_require__(80);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PolylineMixin", function() { return __WEBPACK_IMPORTED_MODULE_11__mixins_Polyline__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12__mixins_Popper__ = __webpack_require__(81);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PopperMixin", function() { return __WEBPACK_IMPORTED_MODULE_12__mixins_Popper__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_13__mixins_TileLayer__ = __webpack_require__(82);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "TileLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_13__mixins_TileLayer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_14__mixins_TileLayerWMS__ = __webpack_require__(83);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "TileLayerWMSMixin", function() { return __WEBPACK_IMPORTED_MODULE_14__mixins_TileLayerWMS__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_15__components_LCircle__ = __webpack_require__(84);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LCircle", function() { return __WEBPACK_IMPORTED_MODULE_15__components_LCircle__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_16__components_LCircleMarker__ = __webpack_require__(85);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LCircleMarker", function() { return __WEBPACK_IMPORTED_MODULE_16__components_LCircleMarker__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_17__components_LControl__ = __webpack_require__(86);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControl", function() { return __WEBPACK_IMPORTED_MODULE_17__components_LControl__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_18__components_LControlAttribution__ = __webpack_require__(87);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlAttribution", function() { return __WEBPACK_IMPORTED_MODULE_18__components_LControlAttribution__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_19__components_LControlLayers__ = __webpack_require__(88);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlLayers", function() { return __WEBPACK_IMPORTED_MODULE_19__components_LControlLayers__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_20__components_LControlScale__ = __webpack_require__(89);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlScale", function() { return __WEBPACK_IMPORTED_MODULE_20__components_LControlScale__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_21__components_LControlZoom__ = __webpack_require__(90);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlZoom", function() { return __WEBPACK_IMPORTED_MODULE_21__components_LControlZoom__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_22__components_LFeatureGroup__ = __webpack_require__(91);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LFeatureGroup", function() { return __WEBPACK_IMPORTED_MODULE_22__components_LFeatureGroup__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_23__components_LGeoJson__ = __webpack_require__(92);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LGeoJson", function() { return __WEBPACK_IMPORTED_MODULE_23__components_LGeoJson__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_24__components_LGridLayer__ = __webpack_require__(93);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LGridLayer", function() { return __WEBPACK_IMPORTED_MODULE_24__components_LGridLayer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_25__components_LIcon__ = __webpack_require__(99);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LIcon", function() { return __WEBPACK_IMPORTED_MODULE_25__components_LIcon__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_26__components_LIconDefault__ = __webpack_require__(100);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LIconDefault", function() { return __WEBPACK_IMPORTED_MODULE_26__components_LIconDefault__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_27__components_LImageOverlay__ = __webpack_require__(101);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LImageOverlay", function() { return __WEBPACK_IMPORTED_MODULE_27__components_LImageOverlay__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_28__components_LLayerGroup__ = __webpack_require__(102);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LLayerGroup", function() { return __WEBPACK_IMPORTED_MODULE_28__components_LLayerGroup__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_29__components_LMap__ = __webpack_require__(103);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LMap", function() { return __WEBPACK_IMPORTED_MODULE_29__components_LMap__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_30__components_LMarker__ = __webpack_require__(104);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LMarker", function() { return __WEBPACK_IMPORTED_MODULE_30__components_LMarker__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_31__components_LPolygon__ = __webpack_require__(105);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPolygon", function() { return __WEBPACK_IMPORTED_MODULE_31__components_LPolygon__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_32__components_LPolyline__ = __webpack_require__(106);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPolyline", function() { return __WEBPACK_IMPORTED_MODULE_32__components_LPolyline__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_33__components_LPopup__ = __webpack_require__(107);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPopup", function() { return __WEBPACK_IMPORTED_MODULE_33__components_LPopup__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_34__components_LRectangle__ = __webpack_require__(108);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LRectangle", function() { return __WEBPACK_IMPORTED_MODULE_34__components_LRectangle__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_35__components_LTileLayer__ = __webpack_require__(109);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LTileLayer", function() { return __WEBPACK_IMPORTED_MODULE_35__components_LTileLayer__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_36__components_LTooltip__ = __webpack_require__(110);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LTooltip", function() { return __WEBPACK_IMPORTED_MODULE_36__components_LTooltip__["a"]; });
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_37__components_LWMSTileLayer__ = __webpack_require__(111);
+/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LWMSTileLayer", function() { return __WEBPACK_IMPORTED_MODULE_37__components_LWMSTileLayer__["a"]; });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/***/ }),
+/* 9 */
+/***/ (function(module, exports) {
+
+module.exports = function (it) {
+  return typeof it === 'object' ? it !== null : typeof it === 'function';
+};
+
+
+/***/ }),
+/* 10 */
+/***/ (function(module, exports) {
+
 /*
 	MIT License http://www.opensource.org/licenses/mit-license.php
 	Author Tobias Koppers @sokra
@@ -14172,7 +14467,71 @@ function toComment(sourceMap) {
 
 
 /***/ }),
-/* 2 */
+/* 11 */
+/***/ (function(module, exports) {
+
+module.exports = true;
+
+
+/***/ }),
+/* 12 */
+/***/ (function(module, exports) {
+
+var core = module.exports = { version: '2.6.9' };
+if (typeof __e == 'number') __e = core; // eslint-disable-line no-undef
+
+
+/***/ }),
+/* 13 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var isObject = __webpack_require__(9);
+module.exports = function (it) {
+  if (!isObject(it)) throw TypeError(it + ' is not an object!');
+  return it;
+};
+
+
+/***/ }),
+/* 14 */
+/***/ (function(module, exports) {
+
+module.exports = function (exec) {
+  try {
+    return !!exec();
+  } catch (e) {
+    return true;
+  }
+};
+
+
+/***/ }),
+/* 15 */
+/***/ (function(module, exports) {
+
+module.exports = function (bitmap, value) {
+  return {
+    enumerable: !(bitmap & 1),
+    configurable: !(bitmap & 2),
+    writable: !(bitmap & 4),
+    value: value
+  };
+};
+
+
+/***/ }),
+/* 16 */
+/***/ (function(module, exports) {
+
+var id = 0;
+var px = Math.random();
+module.exports = function (key) {
+  return 'Symbol('.concat(key === undefined ? '' : key, ')_', (++id + px).toString(36));
+};
+
+
+/***/ }),
+/* 17 */
 /***/ (function(module, exports) {
 
 /* globals __VUE_SSR_CONTEXT__ */
@@ -14281,7 +14640,7 @@ module.exports = function normalizeComponent (
 
 
 /***/ }),
-/* 3 */
+/* 18 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*
@@ -14327,7 +14686,7 @@ var singleton = null;
 var	singletonCounter = 0;
 var	stylesInsertedAtTop = [];
 
-var	fixUrls = __webpack_require__(24);
+var	fixUrls = __webpack_require__(64);
 
 module.exports = function(list, options) {
 	if (typeof DEBUG !== "undefined" && DEBUG) {
@@ -14640,136 +14999,7 @@ function updateLink (link, options, obj) {
 
 
 /***/ }),
-/* 4 */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__utils_utils__ = __webpack_require__(29);
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "debounce", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["c"]; });
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "capitalizeFirstLetter", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["a"]; });
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "propsBinder", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["f"]; });
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "collectionCleaner", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["b"]; });
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "optionsMerger", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["e"]; });
-/* harmony namespace reexport (by provided) */ __webpack_require__.d(__webpack_exports__, "findRealParent", function() { return __WEBPACK_IMPORTED_MODULE_0__utils_utils__["d"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__mixins_Circle__ = __webpack_require__(30);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "CircleMixin", function() { return __WEBPACK_IMPORTED_MODULE_1__mixins_Circle__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2__mixins_Control__ = __webpack_require__(31);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "ControlMixin", function() { return __WEBPACK_IMPORTED_MODULE_2__mixins_Control__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3__mixins_GridLayer__ = __webpack_require__(32);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "GridLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_3__mixins_GridLayer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_4__mixins_ImageOverlay__ = __webpack_require__(33);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "ImageOverlayMixin", function() { return __WEBPACK_IMPORTED_MODULE_4__mixins_ImageOverlay__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5__mixins_InteractiveLayer__ = __webpack_require__(34);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "InteractiveLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_5__mixins_InteractiveLayer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6__mixins_Layer__ = __webpack_require__(35);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_6__mixins_Layer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_7__mixins_LayerGroup__ = __webpack_require__(36);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LayerGroupMixin", function() { return __WEBPACK_IMPORTED_MODULE_7__mixins_LayerGroup__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_8__mixins_Options__ = __webpack_require__(37);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "OptionsMixin", function() { return __WEBPACK_IMPORTED_MODULE_8__mixins_Options__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_9__mixins_Path__ = __webpack_require__(38);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PathMixin", function() { return __WEBPACK_IMPORTED_MODULE_9__mixins_Path__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_10__mixins_Polygon__ = __webpack_require__(39);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PolygonMixin", function() { return __WEBPACK_IMPORTED_MODULE_10__mixins_Polygon__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_11__mixins_Polyline__ = __webpack_require__(40);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PolylineMixin", function() { return __WEBPACK_IMPORTED_MODULE_11__mixins_Polyline__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_12__mixins_Popper__ = __webpack_require__(41);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "PopperMixin", function() { return __WEBPACK_IMPORTED_MODULE_12__mixins_Popper__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_13__mixins_TileLayer__ = __webpack_require__(42);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "TileLayerMixin", function() { return __WEBPACK_IMPORTED_MODULE_13__mixins_TileLayer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_14__mixins_TileLayerWMS__ = __webpack_require__(43);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "TileLayerWMSMixin", function() { return __WEBPACK_IMPORTED_MODULE_14__mixins_TileLayerWMS__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_15__components_LCircle__ = __webpack_require__(44);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LCircle", function() { return __WEBPACK_IMPORTED_MODULE_15__components_LCircle__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_16__components_LCircleMarker__ = __webpack_require__(45);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LCircleMarker", function() { return __WEBPACK_IMPORTED_MODULE_16__components_LCircleMarker__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_17__components_LControl__ = __webpack_require__(46);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControl", function() { return __WEBPACK_IMPORTED_MODULE_17__components_LControl__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_18__components_LControlAttribution__ = __webpack_require__(47);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlAttribution", function() { return __WEBPACK_IMPORTED_MODULE_18__components_LControlAttribution__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_19__components_LControlLayers__ = __webpack_require__(48);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlLayers", function() { return __WEBPACK_IMPORTED_MODULE_19__components_LControlLayers__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_20__components_LControlScale__ = __webpack_require__(49);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlScale", function() { return __WEBPACK_IMPORTED_MODULE_20__components_LControlScale__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_21__components_LControlZoom__ = __webpack_require__(50);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LControlZoom", function() { return __WEBPACK_IMPORTED_MODULE_21__components_LControlZoom__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_22__components_LFeatureGroup__ = __webpack_require__(51);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LFeatureGroup", function() { return __WEBPACK_IMPORTED_MODULE_22__components_LFeatureGroup__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_23__components_LGeoJson__ = __webpack_require__(52);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LGeoJson", function() { return __WEBPACK_IMPORTED_MODULE_23__components_LGeoJson__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_24__components_LGridLayer__ = __webpack_require__(53);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LGridLayer", function() { return __WEBPACK_IMPORTED_MODULE_24__components_LGridLayer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_25__components_LIcon__ = __webpack_require__(59);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LIcon", function() { return __WEBPACK_IMPORTED_MODULE_25__components_LIcon__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_26__components_LIconDefault__ = __webpack_require__(60);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LIconDefault", function() { return __WEBPACK_IMPORTED_MODULE_26__components_LIconDefault__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_27__components_LImageOverlay__ = __webpack_require__(61);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LImageOverlay", function() { return __WEBPACK_IMPORTED_MODULE_27__components_LImageOverlay__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_28__components_LLayerGroup__ = __webpack_require__(62);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LLayerGroup", function() { return __WEBPACK_IMPORTED_MODULE_28__components_LLayerGroup__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_29__components_LMap__ = __webpack_require__(63);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LMap", function() { return __WEBPACK_IMPORTED_MODULE_29__components_LMap__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_30__components_LMarker__ = __webpack_require__(64);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LMarker", function() { return __WEBPACK_IMPORTED_MODULE_30__components_LMarker__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_31__components_LPolygon__ = __webpack_require__(65);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPolygon", function() { return __WEBPACK_IMPORTED_MODULE_31__components_LPolygon__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_32__components_LPolyline__ = __webpack_require__(66);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPolyline", function() { return __WEBPACK_IMPORTED_MODULE_32__components_LPolyline__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_33__components_LPopup__ = __webpack_require__(67);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LPopup", function() { return __WEBPACK_IMPORTED_MODULE_33__components_LPopup__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_34__components_LRectangle__ = __webpack_require__(68);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LRectangle", function() { return __WEBPACK_IMPORTED_MODULE_34__components_LRectangle__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_35__components_LTileLayer__ = __webpack_require__(69);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LTileLayer", function() { return __WEBPACK_IMPORTED_MODULE_35__components_LTileLayer__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_36__components_LTooltip__ = __webpack_require__(70);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LTooltip", function() { return __WEBPACK_IMPORTED_MODULE_36__components_LTooltip__["a"]; });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_37__components_LWMSTileLayer__ = __webpack_require__(71);
-/* harmony reexport (binding) */ __webpack_require__.d(__webpack_exports__, "LWMSTileLayer", function() { return __WEBPACK_IMPORTED_MODULE_37__components_LWMSTileLayer__["a"]; });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/***/ }),
-/* 5 */
+/* 19 */
 /***/ (function(module, exports) {
 
 var g;
@@ -14796,7 +15026,171 @@ module.exports = g;
 
 
 /***/ }),
-/* 6 */
+/* 20 */
+/***/ (function(module, exports) {
+
+// 7.1.4 ToInteger
+var ceil = Math.ceil;
+var floor = Math.floor;
+module.exports = function (it) {
+  return isNaN(it = +it) ? 0 : (it > 0 ? floor : ceil)(it);
+};
+
+
+/***/ }),
+/* 21 */
+/***/ (function(module, exports) {
+
+// 7.2.1 RequireObjectCoercible(argument)
+module.exports = function (it) {
+  if (it == undefined) throw TypeError("Can't call method on  " + it);
+  return it;
+};
+
+
+/***/ }),
+/* 22 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 7.1.1 ToPrimitive(input [, PreferredType])
+var isObject = __webpack_require__(9);
+// instead of the ES6 spec version, we didn't implement @@toPrimitive case
+// and the second argument - flag - preferred type is a string
+module.exports = function (it, S) {
+  if (!isObject(it)) return it;
+  var fn, val;
+  if (S && typeof (fn = it.toString) == 'function' && !isObject(val = fn.call(it))) return val;
+  if (typeof (fn = it.valueOf) == 'function' && !isObject(val = fn.call(it))) return val;
+  if (!S && typeof (fn = it.toString) == 'function' && !isObject(val = fn.call(it))) return val;
+  throw TypeError("Can't convert object to primitive value");
+};
+
+
+/***/ }),
+/* 23 */
+/***/ (function(module, exports) {
+
+module.exports = {};
+
+
+/***/ }),
+/* 24 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 19.1.2.14 / 15.2.3.14 Object.keys(O)
+var $keys = __webpack_require__(41);
+var enumBugKeys = __webpack_require__(27);
+
+module.exports = Object.keys || function keys(O) {
+  return $keys(O, enumBugKeys);
+};
+
+
+/***/ }),
+/* 25 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var shared = __webpack_require__(26)('keys');
+var uid = __webpack_require__(16);
+module.exports = function (key) {
+  return shared[key] || (shared[key] = uid(key));
+};
+
+
+/***/ }),
+/* 26 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var core = __webpack_require__(12);
+var global = __webpack_require__(1);
+var SHARED = '__core-js_shared__';
+var store = global[SHARED] || (global[SHARED] = {});
+
+(module.exports = function (key, value) {
+  return store[key] || (store[key] = value !== undefined ? value : {});
+})('versions', []).push({
+  version: core.version,
+  mode: __webpack_require__(11) ? 'pure' : 'global',
+  copyright: '© 2019 Denis Pushkarev (zloirock.ru)'
+});
+
+
+/***/ }),
+/* 27 */
+/***/ (function(module, exports) {
+
+// IE 8- don't enum bug keys
+module.exports = (
+  'constructor,hasOwnProperty,isPrototypeOf,propertyIsEnumerable,toLocaleString,toString,valueOf'
+).split(',');
+
+
+/***/ }),
+/* 28 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var def = __webpack_require__(4).f;
+var has = __webpack_require__(2);
+var TAG = __webpack_require__(7)('toStringTag');
+
+module.exports = function (it, tag, stat) {
+  if (it && !has(it = stat ? it : it.prototype, TAG)) def(it, TAG, { configurable: true, value: tag });
+};
+
+
+/***/ }),
+/* 29 */
+/***/ (function(module, exports, __webpack_require__) {
+
+exports.f = __webpack_require__(7);
+
+
+/***/ }),
+/* 30 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(1);
+var core = __webpack_require__(12);
+var LIBRARY = __webpack_require__(11);
+var wksExt = __webpack_require__(29);
+var defineProperty = __webpack_require__(4).f;
+module.exports = function (name) {
+  var $Symbol = core.Symbol || (core.Symbol = LIBRARY ? {} : global.Symbol || {});
+  if (name.charAt(0) != '_' && !(name in $Symbol)) defineProperty($Symbol, name, { value: wksExt.f(name) });
+};
+
+
+/***/ }),
+/* 31 */
+/***/ (function(module, exports) {
+
+exports.f = {}.propertyIsEnumerable;
+
+
+/***/ }),
+/* 32 */
+/***/ (function(module, exports) {
+
+module.exports = function escape(url) {
+    if (typeof url !== 'string') {
+        return url
+    }
+    // If url is already wrapped in quotes, remove them
+    if (/^['"].*['"]$/.test(url)) {
+        url = url.slice(1, -1);
+    }
+    // Should url be wrapped?
+    // See https://drafts.csswg.org/css-values-3/#urls
+    if (/["'() \t\n]/.test(url)) {
+        return '"' + url.replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"'
+    }
+
+    return url
+}
+
+
+/***/ }),
+/* 33 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*
@@ -17492,33 +17886,834 @@ exports.MarkerCluster = MarkerCluster;
 
 
 /***/ }),
-/* 7 */
+/* 34 */
 /***/ (function(module, exports, __webpack_require__) {
 
-__webpack_require__(8);
-module.exports = __webpack_require__(78);
+"use strict";
+
+
+exports.__esModule = true;
+
+var _iterator = __webpack_require__(114);
+
+var _iterator2 = _interopRequireDefault(_iterator);
+
+var _symbol = __webpack_require__(132);
+
+var _symbol2 = _interopRequireDefault(_symbol);
+
+var _typeof = typeof _symbol2.default === "function" && typeof _iterator2.default === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof _symbol2.default === "function" && obj.constructor === _symbol2.default && obj !== _symbol2.default.prototype ? "symbol" : typeof obj; };
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = typeof _symbol2.default === "function" && _typeof(_iterator2.default) === "symbol" ? function (obj) {
+  return typeof obj === "undefined" ? "undefined" : _typeof(obj);
+} : function (obj) {
+  return obj && typeof _symbol2.default === "function" && obj.constructor === _symbol2.default && obj !== _symbol2.default.prototype ? "symbol" : typeof obj === "undefined" ? "undefined" : _typeof(obj);
+};
+
+/***/ }),
+/* 35 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var LIBRARY = __webpack_require__(11);
+var $export = __webpack_require__(36);
+var redefine = __webpack_require__(39);
+var hide = __webpack_require__(3);
+var Iterators = __webpack_require__(23);
+var $iterCreate = __webpack_require__(120);
+var setToStringTag = __webpack_require__(28);
+var getPrototypeOf = __webpack_require__(127);
+var ITERATOR = __webpack_require__(7)('iterator');
+var BUGGY = !([].keys && 'next' in [].keys()); // Safari has buggy iterators w/o `next`
+var FF_ITERATOR = '@@iterator';
+var KEYS = 'keys';
+var VALUES = 'values';
+
+var returnThis = function () { return this; };
+
+module.exports = function (Base, NAME, Constructor, next, DEFAULT, IS_SET, FORCED) {
+  $iterCreate(Constructor, NAME, next);
+  var getMethod = function (kind) {
+    if (!BUGGY && kind in proto) return proto[kind];
+    switch (kind) {
+      case KEYS: return function keys() { return new Constructor(this, kind); };
+      case VALUES: return function values() { return new Constructor(this, kind); };
+    } return function entries() { return new Constructor(this, kind); };
+  };
+  var TAG = NAME + ' Iterator';
+  var DEF_VALUES = DEFAULT == VALUES;
+  var VALUES_BUG = false;
+  var proto = Base.prototype;
+  var $native = proto[ITERATOR] || proto[FF_ITERATOR] || DEFAULT && proto[DEFAULT];
+  var $default = $native || getMethod(DEFAULT);
+  var $entries = DEFAULT ? !DEF_VALUES ? $default : getMethod('entries') : undefined;
+  var $anyNative = NAME == 'Array' ? proto.entries || $native : $native;
+  var methods, key, IteratorPrototype;
+  // Fix native
+  if ($anyNative) {
+    IteratorPrototype = getPrototypeOf($anyNative.call(new Base()));
+    if (IteratorPrototype !== Object.prototype && IteratorPrototype.next) {
+      // Set @@toStringTag to native iterators
+      setToStringTag(IteratorPrototype, TAG, true);
+      // fix for some old engines
+      if (!LIBRARY && typeof IteratorPrototype[ITERATOR] != 'function') hide(IteratorPrototype, ITERATOR, returnThis);
+    }
+  }
+  // fix Array#{values, @@iterator}.name in V8 / FF
+  if (DEF_VALUES && $native && $native.name !== VALUES) {
+    VALUES_BUG = true;
+    $default = function values() { return $native.call(this); };
+  }
+  // Define iterator
+  if ((!LIBRARY || FORCED) && (BUGGY || VALUES_BUG || !proto[ITERATOR])) {
+    hide(proto, ITERATOR, $default);
+  }
+  // Plug for library
+  Iterators[NAME] = $default;
+  Iterators[TAG] = returnThis;
+  if (DEFAULT) {
+    methods = {
+      values: DEF_VALUES ? $default : getMethod(VALUES),
+      keys: IS_SET ? $default : getMethod(KEYS),
+      entries: $entries
+    };
+    if (FORCED) for (key in methods) {
+      if (!(key in proto)) redefine(proto, key, methods[key]);
+    } else $export($export.P + $export.F * (BUGGY || VALUES_BUG), NAME, methods);
+  }
+  return methods;
+};
 
 
 /***/ }),
-/* 8 */
+/* 36 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(1);
+var core = __webpack_require__(12);
+var ctx = __webpack_require__(118);
+var hide = __webpack_require__(3);
+var has = __webpack_require__(2);
+var PROTOTYPE = 'prototype';
+
+var $export = function (type, name, source) {
+  var IS_FORCED = type & $export.F;
+  var IS_GLOBAL = type & $export.G;
+  var IS_STATIC = type & $export.S;
+  var IS_PROTO = type & $export.P;
+  var IS_BIND = type & $export.B;
+  var IS_WRAP = type & $export.W;
+  var exports = IS_GLOBAL ? core : core[name] || (core[name] = {});
+  var expProto = exports[PROTOTYPE];
+  var target = IS_GLOBAL ? global : IS_STATIC ? global[name] : (global[name] || {})[PROTOTYPE];
+  var key, own, out;
+  if (IS_GLOBAL) source = name;
+  for (key in source) {
+    // contains in native
+    own = !IS_FORCED && target && target[key] !== undefined;
+    if (own && has(exports, key)) continue;
+    // export native or passed
+    out = own ? target[key] : source[key];
+    // prevent global pollution for namespaces
+    exports[key] = IS_GLOBAL && typeof target[key] != 'function' ? source[key]
+    // bind timers to global for call from export context
+    : IS_BIND && own ? ctx(out, global)
+    // wrap global constructors for prevent change them in library
+    : IS_WRAP && target[key] == out ? (function (C) {
+      var F = function (a, b, c) {
+        if (this instanceof C) {
+          switch (arguments.length) {
+            case 0: return new C();
+            case 1: return new C(a);
+            case 2: return new C(a, b);
+          } return new C(a, b, c);
+        } return C.apply(this, arguments);
+      };
+      F[PROTOTYPE] = C[PROTOTYPE];
+      return F;
+    // make static versions for prototype methods
+    })(out) : IS_PROTO && typeof out == 'function' ? ctx(Function.call, out) : out;
+    // export proto methods to core.%CONSTRUCTOR%.methods.%NAME%
+    if (IS_PROTO) {
+      (exports.virtual || (exports.virtual = {}))[key] = out;
+      // export proto methods to core.%CONSTRUCTOR%.prototype.%NAME%
+      if (type & $export.R && expProto && !expProto[key]) hide(expProto, key, out);
+    }
+  }
+};
+// type bitmap
+$export.F = 1;   // forced
+$export.G = 2;   // global
+$export.S = 4;   // static
+$export.P = 8;   // proto
+$export.B = 16;  // bind
+$export.W = 32;  // wrap
+$export.U = 64;  // safe
+$export.R = 128; // real proto method for `library`
+module.exports = $export;
+
+
+/***/ }),
+/* 37 */
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = !__webpack_require__(5) && !__webpack_require__(14)(function () {
+  return Object.defineProperty(__webpack_require__(38)('div'), 'a', { get: function () { return 7; } }).a != 7;
+});
+
+
+/***/ }),
+/* 38 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var isObject = __webpack_require__(9);
+var document = __webpack_require__(1).document;
+// typeof document.createElement is 'object' in old IE
+var is = isObject(document) && isObject(document.createElement);
+module.exports = function (it) {
+  return is ? document.createElement(it) : {};
+};
+
+
+/***/ }),
+/* 39 */
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = __webpack_require__(3);
+
+
+/***/ }),
+/* 40 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 19.1.2.2 / 15.2.3.5 Object.create(O [, Properties])
+var anObject = __webpack_require__(13);
+var dPs = __webpack_require__(121);
+var enumBugKeys = __webpack_require__(27);
+var IE_PROTO = __webpack_require__(25)('IE_PROTO');
+var Empty = function () { /* empty */ };
+var PROTOTYPE = 'prototype';
+
+// Create object with fake `null` prototype: use iframe Object with cleared prototype
+var createDict = function () {
+  // Thrash, waste and sodomy: IE GC bug
+  var iframe = __webpack_require__(38)('iframe');
+  var i = enumBugKeys.length;
+  var lt = '<';
+  var gt = '>';
+  var iframeDocument;
+  iframe.style.display = 'none';
+  __webpack_require__(126).appendChild(iframe);
+  iframe.src = 'javascript:'; // eslint-disable-line no-script-url
+  // createDict = iframe.contentWindow.Object;
+  // html.removeChild(iframe);
+  iframeDocument = iframe.contentWindow.document;
+  iframeDocument.open();
+  iframeDocument.write(lt + 'script' + gt + 'document.F=Object' + lt + '/script' + gt);
+  iframeDocument.close();
+  createDict = iframeDocument.F;
+  while (i--) delete createDict[PROTOTYPE][enumBugKeys[i]];
+  return createDict();
+};
+
+module.exports = Object.create || function create(O, Properties) {
+  var result;
+  if (O !== null) {
+    Empty[PROTOTYPE] = anObject(O);
+    result = new Empty();
+    Empty[PROTOTYPE] = null;
+    // add "__proto__" for Object.getPrototypeOf polyfill
+    result[IE_PROTO] = O;
+  } else result = createDict();
+  return Properties === undefined ? result : dPs(result, Properties);
+};
+
+
+/***/ }),
+/* 41 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var has = __webpack_require__(2);
+var toIObject = __webpack_require__(6);
+var arrayIndexOf = __webpack_require__(123)(false);
+var IE_PROTO = __webpack_require__(25)('IE_PROTO');
+
+module.exports = function (object, names) {
+  var O = toIObject(object);
+  var i = 0;
+  var result = [];
+  var key;
+  for (key in O) if (key != IE_PROTO) has(O, key) && result.push(key);
+  // Don't enum bug & hidden keys
+  while (names.length > i) if (has(O, key = names[i++])) {
+    ~arrayIndexOf(result, key) || result.push(key);
+  }
+  return result;
+};
+
+
+/***/ }),
+/* 42 */
+/***/ (function(module, exports) {
+
+var toString = {}.toString;
+
+module.exports = function (it) {
+  return toString.call(it).slice(8, -1);
+};
+
+
+/***/ }),
+/* 43 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 7.1.13 ToObject(argument)
+var defined = __webpack_require__(21);
+module.exports = function (it) {
+  return Object(defined(it));
+};
+
+
+/***/ }),
+/* 44 */
+/***/ (function(module, exports) {
+
+exports.f = Object.getOwnPropertySymbols;
+
+
+/***/ }),
+/* 45 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 19.1.2.7 / 15.2.3.4 Object.getOwnPropertyNames(O)
+var $keys = __webpack_require__(41);
+var hiddenKeys = __webpack_require__(27).concat('length', 'prototype');
+
+exports.f = Object.getOwnPropertyNames || function getOwnPropertyNames(O) {
+  return $keys(O, hiddenKeys);
+};
+
+
+/***/ }),
+/* 46 */
+/***/ (function(module, exports) {
+
+// Based on https://github.com/shramov/leaflet-plugins
+// GridLayer like https://avinmathew.com/leaflet-and-google-maps/ , but using MutationObserver instead of jQuery
+
+
+// 🍂class GridLayer.GoogleMutant
+// 🍂extends GridLayer
+L.GridLayer.GoogleMutant = L.GridLayer.extend({
+	options: {
+		minZoom: 0,
+		maxZoom: 23,
+		tileSize: 256,
+		subdomains: 'abc',
+		errorTileUrl: '',
+		attribution: '',	// The mutant container will add its own attribution anyways.
+		opacity: 1,
+		continuousWorld: false,
+		noWrap: false,
+		// 🍂option type: String = 'roadmap'
+		// Google's map type. Valid values are 'roadmap', 'satellite' or 'terrain'. 'hybrid' is not really supported.
+		type: 'roadmap',
+		maxNativeZoom: 21
+	},
+
+	initialize: function (options) {
+		L.GridLayer.prototype.initialize.call(this, options);
+
+		this._ready = !!window.google && !!window.google.maps && !!window.google.maps.Map;
+
+		this._GAPIPromise = this._ready ? Promise.resolve(window.google) : new Promise(function (resolve, reject) {
+			var checkCounter = 0;
+			var intervalId = null;
+			intervalId = setInterval(function () {
+				if (checkCounter >= 10) {
+					clearInterval(intervalId);
+					return reject(new Error('window.google not found after 10 attempts'));
+				}
+				if (!!window.google && !!window.google.maps && !!window.google.maps.Map) {
+					clearInterval(intervalId);
+					return resolve(window.google);
+				}
+				checkCounter++;
+			}, 500);
+		});
+
+		// Couple data structures indexed by tile key
+		this._tileCallbacks = {};	// Callbacks for promises for tiles that are expected
+		this._freshTiles = {};	// Tiles from the mutant which haven't been requested yet
+
+		this._imagesPerTile = (this.options.type === 'hybrid') ? 2 : 1;
+
+		this._boundOnMutatedImage = this._onMutatedImage.bind(this);
+	},
+
+	onAdd: function (map) {
+		L.GridLayer.prototype.onAdd.call(this, map);
+		this._initMutantContainer();
+
+		this._GAPIPromise.then(function () {
+			this._ready = true;
+			this._map = map;
+
+			this._initMutant();
+
+			map.on('viewreset', this._reset, this);
+			if (this.options.updateWhenIdle) {
+				map.on('moveend', this._update, this);
+			} else {
+				map.on('move', this._update, this);
+			}
+			map.on('zoomend', this._handleZoomAnim, this);
+			map.on('resize', this._resize, this);
+
+			//handle layer being added to a map for which there are no Google tiles at the given zoom
+			google.maps.event.addListenerOnce(this._mutant, 'idle', function () {
+				this._checkZoomLevels();
+				this._mutantIsReady = true;
+			}.bind(this));
+
+			//20px instead of 1em to avoid a slight overlap with google's attribution
+			map._controlCorners.bottomright.style.marginBottom = '20px';
+			map._controlCorners.bottomleft.style.marginBottom = '20px';
+
+			this._reset();
+			this._update();
+
+			if (this._subLayers) {
+				//restore previously added google layers
+				for (var layerName in this._subLayers) {
+					this._subLayers[layerName].setMap(this._mutant);
+				}
+			}
+		}.bind(this));
+	},
+
+	onRemove: function (map) {
+		L.GridLayer.prototype.onRemove.call(this, map);
+		this._observer.disconnect();
+		map._container.removeChild(this._mutantContainer);
+
+		google.maps.event.clearListeners(map, 'idle');
+		google.maps.event.clearListeners(this._mutant, 'idle');
+		map.off('viewreset', this._reset, this);
+		map.off('move', this._update, this);
+		map.off('moveend', this._update, this);
+		map.off('zoomend', this._handleZoomAnim, this);
+		map.off('resize', this._resize, this);
+
+		if (map._controlCorners) {
+			map._controlCorners.bottomright.style.marginBottom = '0em';
+			map._controlCorners.bottomleft.style.marginBottom = '0em';
+		}
+	},
+
+	getAttribution: function () {
+		return this.options.attribution;
+	},
+
+	setElementSize: function (e, size) {
+		e.style.width = size.x + 'px';
+		e.style.height = size.y + 'px';
+	},
+
+
+	addGoogleLayer: function (googleLayerName, options) {
+		if (!this._subLayers) this._subLayers = {};
+		return this._GAPIPromise.then(function () {
+			var Constructor = google.maps[googleLayerName];
+			var googleLayer = new Constructor(options);
+			googleLayer.setMap(this._mutant);
+			this._subLayers[googleLayerName] = googleLayer;
+			return googleLayer;
+		}.bind(this));
+	},
+
+	removeGoogleLayer: function (googleLayerName) {
+		var googleLayer = this._subLayers && this._subLayers[googleLayerName];
+		if (!googleLayer) return;
+
+		googleLayer.setMap(null);
+		delete this._subLayers[googleLayerName];
+	},
+
+
+	_initMutantContainer: function () {
+		if (!this._mutantContainer) {
+			this._mutantContainer = L.DomUtil.create('div', 'leaflet-google-mutant leaflet-top leaflet-left');
+			this._mutantContainer.id = '_MutantContainer_' + L.Util.stamp(this._mutantContainer);
+			this._mutantContainer.style.zIndex = '800'; //leaflet map pane at 400, controls at 1000
+			this._mutantContainer.style.pointerEvents = 'none';
+			
+			L.DomEvent.off(this._mutantContainer);
+
+		}
+		this._map.getContainer().appendChild(this._mutantContainer);
+
+		this.setOpacity(this.options.opacity);
+		this.setElementSize(this._mutantContainer, this._map.getSize());
+
+		this._attachObserver(this._mutantContainer);
+	},
+
+	_initMutant: function () {
+		if (!this._ready || !this._mutantContainer) return;
+
+		if (this._mutant) {
+			// reuse old _mutant, just make sure it has the correct size
+			this._resize();
+			return;
+		}
+
+		this._mutantCenter = new google.maps.LatLng(0, 0);
+
+		var map = new google.maps.Map(this._mutantContainer, {
+			center: this._mutantCenter,
+			zoom: 0,
+			tilt: 0,
+			mapTypeId: this.options.type,
+			disableDefaultUI: true,
+			keyboardShortcuts: false,
+			draggable: false,
+			disableDoubleClickZoom: true,
+			scrollwheel: false,
+			streetViewControl: false,
+			styles: this.options.styles || {},
+			backgroundColor: 'transparent'
+		});
+
+		this._mutant = map;
+
+		google.maps.event.addListenerOnce(map, 'idle', function () {
+			var nodes = this._mutantContainer.querySelectorAll('a');
+			for (var i = 0; i < nodes.length; i++) {
+				nodes[i].style.pointerEvents = 'auto';
+			}
+		}.bind(this));
+
+		// 🍂event spawned
+		// Fired when the mutant has been created.
+		this.fire('spawned', {mapObject: map});
+	},
+
+	_attachObserver: function _attachObserver (node) {
+// 		console.log('Gonna observe', node);
+
+		if (!this._observer)
+			this._observer = new MutationObserver(this._onMutations.bind(this));
+
+		// pass in the target node, as well as the observer options
+		this._observer.observe(node, { childList: true, subtree: true });
+
+		// if we are reusing an old _mutantContainer, we must manually detect
+		// all existing tiles in it
+		Array.prototype.forEach.call(
+			node.querySelectorAll('img'),
+			this._boundOnMutatedImage
+		);
+	},
+
+	_onMutations: function _onMutations (mutations) {
+		for (var i = 0; i < mutations.length; ++i) {
+			var mutation = mutations[i];
+			for (var j = 0; j < mutation.addedNodes.length; ++j) {
+				var node = mutation.addedNodes[j];
+
+				if (node instanceof HTMLImageElement) {
+					this._onMutatedImage(node);
+				} else if (node instanceof HTMLElement) {
+					Array.prototype.forEach.call(
+						node.querySelectorAll('img'),
+						this._boundOnMutatedImage
+					);
+
+					// Check for, and remove, the "Google Maps can't load correctly" div.
+					// You *are* loading correctly, you dumbwit.
+					if (node.style.backgroundColor === 'white') {
+						L.DomUtil.remove(node);
+					}
+                    
+					// Check for, and remove, the "For development purposes only" divs on the aerial/hybrid tiles.
+					if (node.textContent.indexOf('For development purposes only') === 0) {
+						L.DomUtil.remove(node);
+					}
+                    
+					// Check for, and remove, the "Sorry, we have no imagery here"
+					// empty <div>s. The [style*="text-align: center"] selector
+					// avoids matching the attribution notice.
+					// This empty div doesn't have a reference to the tile
+					// coordinates, so it's not possible to mark the tile as
+					// failed.
+					Array.prototype.forEach.call(
+						node.querySelectorAll('div[draggable=false][style*="text-align: center"]'),
+						L.DomUtil.remove
+					);
+				}
+			}
+		}
+	},
+
+	// Only images which 'src' attrib match this will be considered for moving around.
+	// Looks like some kind of string-based protobuf, maybe??
+	// Only the roads (and terrain, and vector-based stuff) match this pattern
+	_roadRegexp: /!1i(\d+)!2i(\d+)!3i(\d+)!/,
+
+	// On the other hand, raster imagery matches this other pattern
+	_satRegexp: /x=(\d+)&y=(\d+)&z=(\d+)/,
+
+	// On small viewports, when zooming in/out, a static image is requested
+	// This will not be moved around, just removed from the DOM.
+	_staticRegExp: /StaticMapService\.GetMapImage/,
+
+	_onMutatedImage: function _onMutatedImage (imgNode) {
+// 		if (imgNode.src) {
+// 			console.log('caught mutated image: ', imgNode.src);
+// 		}
+
+		var coords;
+		var match = imgNode.src.match(this._roadRegexp);
+		var sublayer = 0;
+
+		if (match) {
+			coords = {
+				z: match[1],
+				x: match[2],
+				y: match[3]
+			};
+			if (this._imagesPerTile > 1) { 
+				imgNode.style.zIndex = 1;
+				sublayer = 1;
+			}
+		} else {
+			match = imgNode.src.match(this._satRegexp);
+			if (match) {
+				coords = {
+					x: match[1],
+					y: match[2],
+					z: match[3]
+				};
+			}
+// 			imgNode.style.zIndex = 0;
+			sublayer = 0;
+		}
+
+		if (coords) {
+			var tileKey = this._tileCoordsToKey(coords);
+			imgNode.style.position = 'absolute';
+			imgNode.style.visibility = 'hidden';
+
+			var key = tileKey + '/' + sublayer;
+			// console.log('mutation for tile', key)
+			//store img so it can also be used in subsequent tile requests
+			this._freshTiles[key] = imgNode;
+
+			if (key in this._tileCallbacks && this._tileCallbacks[key]) {
+// console.log('Fullfilling callback ', key);
+				//fullfill most recent tileCallback because there maybe callbacks that will never get a 
+				//corresponding mutation (because map moved to quickly...)
+				this._tileCallbacks[key].pop()(imgNode); 
+				if (!this._tileCallbacks[key].length) { delete this._tileCallbacks[key]; }
+			} else {
+				if (this._tiles[tileKey]) {
+					//we already have a tile in this position (mutation is probably a google layer being added)
+					//replace it
+					var c = this._tiles[tileKey].el;
+					var oldImg = (sublayer === 0) ? c.firstChild : c.firstChild.nextSibling;
+					var cloneImgNode = this._clone(imgNode);
+					c.replaceChild(cloneImgNode, oldImg);
+				}
+			}
+		} else if (imgNode.src.match(this._staticRegExp)) {
+			imgNode.style.visibility = 'hidden';
+		}
+	},
+
+
+	createTile: function (coords, done) {
+		var key = this._tileCoordsToKey(coords);
+
+		var tileContainer = L.DomUtil.create('div');
+		tileContainer.dataset.pending = this._imagesPerTile;
+		done = done.bind(this, null, tileContainer);
+
+		for (var i = 0; i < this._imagesPerTile; i++) {
+			var key2 = key + '/' + i;
+			if (key2 in this._freshTiles) {
+				var imgNode = this._freshTiles[key2];
+				tileContainer.appendChild(this._clone(imgNode));
+				tileContainer.dataset.pending--;
+// 				console.log('Got ', key2, ' from _freshTiles');
+			} else {
+				this._tileCallbacks[key2] = this._tileCallbacks[key2] || [];
+				this._tileCallbacks[key2].push( (function (c/*, k2*/) {
+					return function (imgNode) {
+						c.appendChild(this._clone(imgNode));
+						c.dataset.pending--;
+						if (!parseInt(c.dataset.pending)) { done(); }
+// 						console.log('Sent ', k2, ' to _tileCallbacks, still ', c.dataset.pending, ' images to go');
+					}.bind(this);
+				}.bind(this))(tileContainer/*, key2*/) );
+			}
+		}
+
+		if (!parseInt(tileContainer.dataset.pending)) {
+			L.Util.requestAnimFrame(done);
+		}
+		return tileContainer;
+	},
+
+	_clone: function (imgNode) {
+		var clonedImgNode = imgNode.cloneNode(true);
+		clonedImgNode.style.visibility = 'visible';
+		return clonedImgNode;
+	},
+
+	_checkZoomLevels: function () {
+		//setting the zoom level on the Google map may result in a different zoom level than the one requested
+		//(it won't go beyond the level for which they have data).
+		var zoomLevel = this._map.getZoom();
+		var gMapZoomLevel = this._mutant.getZoom();
+		if (!zoomLevel || !gMapZoomLevel) return;
+
+
+		if ((gMapZoomLevel !== zoomLevel) || //zoom levels are out of sync, Google doesn't have data
+			(gMapZoomLevel > this.options.maxNativeZoom)) { //at current location, Google does have data (contrary to maxNativeZoom)
+			//Update maxNativeZoom
+			this._setMaxNativeZoom(gMapZoomLevel);
+		}
+	},
+
+	_setMaxNativeZoom: function (zoomLevel) {
+		if (zoomLevel != this.options.maxNativeZoom) {
+			this.options.maxNativeZoom = zoomLevel;
+			this._resetView();
+		}
+	},
+
+	_reset: function () {
+		this._initContainer();
+	},
+
+	_update: function () {
+		// zoom level check needs to happen before super's implementation (tile addition/creation)
+		// otherwise tiles may be missed if maxNativeZoom is not yet correctly determined
+		if (this._mutant) {
+			var center = this._map.getCenter();
+			var _center = new google.maps.LatLng(center.lat, center.lng);
+
+			this._mutant.setCenter(_center);
+			var zoom = this._map.getZoom();
+			var fractionalLevel = zoom !== Math.round(zoom);
+			var mutantZoom = this._mutant.getZoom();
+
+			//ignore fractional zoom levels
+			if (!fractionalLevel && (zoom != mutantZoom)) {
+				this._mutant.setZoom(zoom);
+							
+				if (this._mutantIsReady) this._checkZoomLevels();
+				//else zoom level check will be done later by 'idle' handler
+			}
+		}
+
+		L.GridLayer.prototype._update.call(this);
+	},
+
+	_resize: function () {
+		var size = this._map.getSize();
+		if (this._mutantContainer.style.width === size.x &&
+			this._mutantContainer.style.height === size.y)
+			return;
+		this.setElementSize(this._mutantContainer, size);
+		if (!this._mutant) return;
+		google.maps.event.trigger(this._mutant, 'resize');
+	},
+
+	_handleZoomAnim: function () {
+		if (!this._mutant) return;
+		var center = this._map.getCenter();
+		var _center = new google.maps.LatLng(center.lat, center.lng);
+
+		this._mutant.setCenter(_center);
+		this._mutant.setZoom(Math.round(this._map.getZoom()));
+	},
+
+	// Agressively prune _freshtiles when a tile with the same key is removed,
+	// this prevents a problem where Leaflet keeps a loaded tile longer than
+	// GMaps, so that GMaps makes two requests but Leaflet only consumes one,
+	// polluting _freshTiles with stale data.
+	_removeTile: function (key) {
+		if (!this._mutant) return;
+
+		//give time for animations to finish before checking it tile should be pruned
+		setTimeout(this._pruneTile.bind(this, key), 1000);
+
+
+		return L.GridLayer.prototype._removeTile.call(this, key);
+	},
+
+	_pruneTile: function (key) {
+		var gZoom = this._mutant.getZoom();
+		var tileZoom = key.split(':')[2];
+		var googleBounds = this._mutant.getBounds();
+		var sw = googleBounds.getSouthWest();
+		var ne = googleBounds.getNorthEast();
+		var gMapBounds = L.latLngBounds([[sw.lat(), sw.lng()], [ne.lat(), ne.lng()]]);
+
+		for (var i=0; i<this._imagesPerTile; i++) {
+			var key2 = key + '/' + i;
+			if (key2 in this._freshTiles) { 
+				var tileBounds = this._map && this._keyToBounds(key);
+				var stillVisible = this._map && tileBounds.overlaps(gMapBounds) && (tileZoom == gZoom);
+
+				if (!stillVisible) delete this._freshTiles[key2]; 
+//				console.log('Prunning of ', key, (!stillVisible))
+			}
+		}
+	}
+});
+
+
+// 🍂factory gridLayer.googleMutant(options)
+// Returns a new `GridLayer.GoogleMutant` given its options
+L.gridLayer.googleMutant = function (options) {
+	return new L.GridLayer.GoogleMutant(options);
+};
+
+
+/***/ }),
+/* 47 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(48);
+module.exports = __webpack_require__(148);
+
+
+/***/ }),
+/* 48 */
 /***/ (function(module, exports, __webpack_require__) {
 
 Nova.booting(function (Vue, router, store) {
-    Vue.component('index-leaflet-map', __webpack_require__(9));
-    Vue.component('detail-leaflet-map', __webpack_require__(12));
-    Vue.component('form-leaflet-map', __webpack_require__(74));
+    Vue.component('index-leaflet-map', __webpack_require__(49));
+    Vue.component('detail-leaflet-map', __webpack_require__(52));
+    Vue.component('form-leaflet-map', __webpack_require__(144));
 });
 
 /***/ }),
-/* 9 */
+/* 49 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
-var normalizeComponent = __webpack_require__(2)
+var normalizeComponent = __webpack_require__(17)
 /* script */
-var __vue_script__ = __webpack_require__(10)
+var __vue_script__ = __webpack_require__(50)
 /* template */
-var __vue_template__ = __webpack_require__(11)
+var __vue_template__ = __webpack_require__(51)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -17557,7 +18752,7 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 10 */
+/* 50 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -17572,7 +18767,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 11 */
+/* 51 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -17592,19 +18787,19 @@ if (false) {
 }
 
 /***/ }),
-/* 12 */
+/* 52 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
 function injectStyle (ssrContext) {
   if (disposed) return
-  __webpack_require__(13)
+  __webpack_require__(53)
 }
-var normalizeComponent = __webpack_require__(2)
+var normalizeComponent = __webpack_require__(17)
 /* script */
-var __vue_script__ = __webpack_require__(17)
+var __vue_script__ = __webpack_require__(58)
 /* template */
-var __vue_template__ = __webpack_require__(73)
+var __vue_template__ = __webpack_require__(143)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -17643,17 +18838,17 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 13 */
+/* 53 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(14);
+var content = __webpack_require__(54);
 if(typeof content === 'string') content = [[module.i, content, '']];
 if(content.locals) module.exports = content.locals;
 // add the styles to the DOM
-var update = __webpack_require__(15)("6bd2fde8", content, false, {});
+var update = __webpack_require__(56)("6bd2fde8", content, false, {});
 // Hot Module Replacement
 if(false) {
  // When the styles change, update the <style> tags
@@ -17669,21 +18864,28 @@ if(false) {
 }
 
 /***/ }),
-/* 14 */
+/* 54 */
 /***/ (function(module, exports, __webpack_require__) {
 
-exports = module.exports = __webpack_require__(1)(false);
+var escape = __webpack_require__(32);
+exports = module.exports = __webpack_require__(10)(false);
 // imports
 
 
 // module
-exports.push([module.i, "\n.leaflet-control-layers-toggle {\n    background-image: url('/images/layers.png');\n}\n.leaflet-popup-content-wrapper {\n    border-radius: 1px;\n}\n.leaflet-top.leaflet-left .leaflet-control-zoom {\n    -webkit-box-shadow: 0 0 7px #999!important;\n            box-shadow: 0 0 7px #999!important;\n}\n.vue2leaflet-map {\n    z-index: 1;\n}\n", ""]);
+exports.push([module.i, "\n.leaflet-control-layers-toggle {\n    background-image: url(" + escape(__webpack_require__(55)) + ");\n}\n.leaflet-popup-content-wrapper {\n    border-radius: 1px;\n}\n.leaflet-top.leaflet-left .leaflet-control-zoom {\n    -webkit-box-shadow: 0 0 7px #999!important;\n            box-shadow: 0 0 7px #999!important;\n}\n.vue2leaflet-map {\n    z-index: 1;\n}\n", ""]);
 
 // exports
 
 
 /***/ }),
-/* 15 */
+/* 55 */
+/***/ (function(module, exports) {
+
+module.exports = "/images/layers.png?a6137456ed160d7606981aa57c559898";
+
+/***/ }),
+/* 56 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*
@@ -17702,7 +18904,7 @@ if (typeof DEBUG !== 'undefined' && DEBUG) {
   ) }
 }
 
-var listToStyles = __webpack_require__(16)
+var listToStyles = __webpack_require__(57)
 
 /*
 type StyleObject = {
@@ -17911,7 +19113,7 @@ function applyToTag (styleElement, obj) {
 
 
 /***/ }),
-/* 16 */
+/* 57 */
 /***/ (function(module, exports) {
 
 /**
@@ -17944,22 +19146,24 @@ module.exports = function listToStyles (parentId, list) {
 
 
 /***/ }),
-/* 17 */
+/* 58 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_leaflet_dist_leaflet_css__ = __webpack_require__(18);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_leaflet_dist_leaflet_css__ = __webpack_require__(59);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_leaflet_dist_leaflet_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_leaflet_dist_leaflet_css__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_leaflet_markercluster_dist_MarkerCluster_css__ = __webpack_require__(25);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_leaflet_markercluster_dist_MarkerCluster_css__ = __webpack_require__(65);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_leaflet_markercluster_dist_MarkerCluster_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_leaflet_markercluster_dist_MarkerCluster_css__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_leaflet_markercluster_dist_MarkerCluster_Default_css__ = __webpack_require__(27);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_leaflet_markercluster_dist_MarkerCluster_Default_css__ = __webpack_require__(67);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_2_leaflet_markercluster_dist_MarkerCluster_Default_css___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_2_leaflet_markercluster_dist_MarkerCluster_Default_css__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__ = __webpack_require__(4);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__ = __webpack_require__(8);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_leaflet__ = __webpack_require__(0);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_4_leaflet___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_4_leaflet__);
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster__ = __webpack_require__(72);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster__ = __webpack_require__(112);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster__);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_vue2_leaflet_googlemutant__ = __webpack_require__(113);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_6_vue2_leaflet_googlemutant___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_6_vue2_leaflet_googlemutant__);
 //
 //
 //
@@ -18001,6 +19205,13 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 //
 //
 //
+//
+//
+//
+//
+//
+//
+
 
 
 
@@ -18017,138 +19228,152 @@ delete __WEBPACK_IMPORTED_MODULE_4_leaflet__["Icon"].Default.prototype._getIconU
 
 __WEBPACK_IMPORTED_MODULE_4_leaflet__["Icon"].Default.imagePath = '.';
 __WEBPACK_IMPORTED_MODULE_4_leaflet__["Icon"].Default.mergeOptions({
-    iconRetinaUrl: base64img,
-    //iconUrl: '@/src/images/marker-icon.png',
-    iconUrl: base64img,
-    //shadowUrl: '/images/marker-shadow.png',
-    layersUrl: '/images/layers.png'
+  iconRetinaUrl: base64img,
+  //iconUrl: '@/src/images/marker-icon.png',
+  iconUrl: base64img
+  //shadowUrl: '/images/marker-shadow.png',
+  //layersUrl: '@/assets/layers.png',
 });
 
 /* harmony default export */ __webpack_exports__["default"] = ({
-    props: ['resource', 'resourceName', 'resourceId', 'field'],
-    name: 'example',
-    components: {
-        'v-map': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LMap"],
-        'v-tile-layer': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LTileLayer"],
-        'v-icondefault': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LIconDefault"],
-        'v-marker': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LMarker"],
-        'v-popup': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LPopup"],
-        'v-marker-cluster': __WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster___default.a,
-        LControlLayers: __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LControlLayers"],
-        'v-geo-json': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LGeoJson"]
-    },
-    methods: {
-        click: function click(e) {
-            //alert("clusterclick")
-        }
-    },
-    data: function data() {
-        var iconMarker;
-        var popupName;
-        var geoJsons = [];
-        var featureType = this.field.type;
-        //let htmlPopup = this.field.html
-
-        var iniLocation = '';
-
-        if (this.field.type == "GeoJson") {
-            iniLocation = Object(__WEBPACK_IMPORTED_MODULE_4_leaflet__["latLng"])(this.field.centerLat, this.field.centerLon);
-        } else if (this.field.type == "LatLon") {
-            iniLocation = Object(__WEBPACK_IMPORTED_MODULE_4_leaflet__["latLng"])(this.field.latitude, this.field.longitude);
-        }
-
-        if (this.field.mapIconUrl == null) {
-
-            iconMarker = L.icon({
-                iconUrl: base64img,
-                iconSize: [25, 41],
-                iconAnchor: [13, 12]
-            });
-        } else {
-
-            iconMarker = L.icon({
-                iconUrl: this.field.mapIconUrl,
-                iconSize: [100, 100],
-                iconAnchor: [50, 10]
-            });
-        }
-
-        if (this.field.type == "GeoJson") {
-
-            geoJsons.push(JSON.parse(this.field.geoJson));
-            //console.log(geoJsons);
-        } else if (this.field.type == "LatLon") {
-
-            var geojsonCustom = {
-                "type": "FeatureCollection",
-                "features": [{
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [this.field.longitude, this.field.latitude]
-                    },
-                    "properties": {
-                        "popupContent": this.field.popupName
-                    }
-
-                }]
-            };
-
-            //console.log(this.field.type)
-            geoJsons.push(geojsonCustom);
-        }
-        popupName = this.field.popupName;
-        //console.log(this.field.popupName)
-
-
-        return {
-            options: {
-                onEachFeature: function onEachFeature(feature, layer) {
-                    //console.log("type: " + featureType)
-                    if (featureType == 'LatLon') {
-                        layer.bindPopup(feature.properties.popupContent);
-                        //console.log(feature.properties.popupContent)
-                    } else if (featureType == 'GeoJson') {
-                        layer.bindPopup(feature.properties[popupName]);
-                    }
-                    //console.log(popupName)
-                }
-            },
-            geoJsons: geoJsons,
-            icon: iconMarker,
-            clusterOptions: {},
-            //initialLocation: latLng(-34.9205, -57.953646),
-            zoom: this.field.zoom,
-            center: iniLocation,
-            tileProviders: [{
-                name: 'OpenStreetMap',
-                visible: true,
-                attribution: '&copy; <a target="_blank" href="http://osm.org/copyright">OpenStreetMap</a> contributors',
-                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-            }]
-
-        };
-    },
-    mounted: function mounted() {
-        var _this = this;
-
-        setTimeout(function () {
-            //console.log('done')
-            _this.$nextTick(function () {
-                _this.clusterOptions = { disableClusteringAtZoom: 11 };
-            });
-        }, 5000);
+  props: ['resource', 'resourceName', 'resourceId', 'field'],
+  name: 'example',
+  components: {
+    'v-map': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LMap"],
+    'v-tile-layer': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LTileLayer"],
+    'v-icondefault': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LIconDefault"],
+    'v-marker': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LMarker"],
+    'v-popup': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LPopup"],
+    'v-marker-cluster': __WEBPACK_IMPORTED_MODULE_5_vue2_leaflet_markercluster___default.a,
+    'v-control-layers': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LControlLayers"],
+    'v-geo-json': __WEBPACK_IMPORTED_MODULE_3_vue2_leaflet__["LGeoJson"],
+    'v-tilelayer-googlemutant': __WEBPACK_IMPORTED_MODULE_6_vue2_leaflet_googlemutant___default.a
+  },
+  methods: {
+    click: function click(e) {
+      //alert("clusterclick")
     }
+  },
+  data: function data() {
+    var iconMarker;
+    var popupName;
+    var geoJsons = [];
+    var featureType = this.field.type;
+    var googleMapOptions = {
+      type: this.field.googleMapType
+      //let hiddenMap = false
+
+    };var iniLocation = '';
+
+    if (this.field.type == "GeoJson") {
+      iniLocation = Object(__WEBPACK_IMPORTED_MODULE_4_leaflet__["latLng"])(this.field.centerLat, this.field.centerLon);
+    } else if (this.field.type == "LatLon") {
+      iniLocation = Object(__WEBPACK_IMPORTED_MODULE_4_leaflet__["latLng"])(this.field.latitude, this.field.longitude);
+    }
+
+    if (this.field.mapIconUrl == null) {
+
+      iconMarker = L.icon({
+        iconUrl: base64img,
+        iconSize: [25, 41],
+        iconAnchor: [13, 12]
+      });
+    } else {
+
+      iconMarker = L.icon({
+        iconUrl: this.field.mapIconUrl,
+        iconSize: [100, 100],
+        iconAnchor: [50, 10]
+      });
+    }
+
+    if (this.field.type == "GeoJson") {
+
+      geoJsons.push(JSON.parse(this.field.geoJson));
+    } else if (this.field.type == "LatLon") {
+
+      var geojsonCustom = {
+        "type": "FeatureCollection",
+        "features": [{
+          "type": "Feature",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [this.field.longitude, this.field.latitude]
+          },
+          "properties": {
+            "popupContent": this.field.popupName
+          }
+
+        }]
+      };
+
+      //console.log(this.field.type)
+      geoJsons.push(geojsonCustom);
+    }
+
+    popupName = this.field.popupName;
+    //console.log(this.field.popupName)
+
+
+    return {
+      options: {
+        onEachFeature: function onEachFeature(feature, layer) {
+          //console.log("type: " + featureType)
+          if (featureType == 'LatLon') {
+            layer.bindPopup(feature.properties.popupContent);
+            //console.log(feature.properties.popupContent)
+          } else if (featureType == 'GeoJson') {
+            layer.bindPopup(feature.properties[popupName]);
+          }
+          //console.log(popupName)
+        }
+      },
+      googleMapOptions: googleMapOptions,
+      geoJsons: geoJsons,
+      icon: iconMarker,
+      clusterOptions: {},
+      //initialLocation: latLng(-34.9205, -57.953646),
+      zoom: this.field.zoom,
+      center: iniLocation,
+      tileProviders: [{
+        name: 'OpenStreetMap',
+        visible: true,
+        attribution: '&copy; <a target="_blank" href="http://osm.org/copyright">OpenStreetMap</a> contributors',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      }],
+      googleProviders: [{
+        name: 'Google',
+        visible: false
+        //attribution: '&copy; <a target="_blank" href="http://osm.org/copyright">OpenStreetMap</a> contributors',
+        // url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      }]
+
+    };
+  },
+  mounted: function mounted() {
+    var _this = this;
+
+    setTimeout(function () {
+      //console.log('done')
+      _this.$nextTick(function () {
+        _this.clusterOptions = { disableClusteringAtZoom: 11 };
+      });
+    }, 5000);
+    console.log('Removing Google...');
+    if (this.field.googleApiKey == null) {
+      this.googleProviders = [];
+    }
+  }
 });
 
 /***/ }),
-/* 18 */
+/* 59 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(19);
+var content = __webpack_require__(60);
 if(typeof content === 'string') content = [[module.i, content, '']];
 // Prepare cssTransformation
 var transform;
@@ -18156,7 +19381,7 @@ var transform;
 var options = {}
 options.transform = transform
 // add the styles to the DOM
-var update = __webpack_require__(3)(content, options);
+var update = __webpack_require__(18)(content, options);
 if(content.locals) module.exports = content.locals;
 // Hot Module Replacement
 if(false) {
@@ -18173,62 +19398,40 @@ if(false) {
 }
 
 /***/ }),
-/* 19 */
+/* 60 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var escape = __webpack_require__(20);
-exports = module.exports = __webpack_require__(1)(false);
+var escape = __webpack_require__(32);
+exports = module.exports = __webpack_require__(10)(false);
 // imports
 
 
 // module
-exports.push([module.i, "/* required styles */\r\n\r\n.leaflet-pane,\r\n.leaflet-tile,\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow,\r\n.leaflet-tile-container,\r\n.leaflet-pane > svg,\r\n.leaflet-pane > canvas,\r\n.leaflet-zoom-box,\r\n.leaflet-image-layer,\r\n.leaflet-layer {\r\n\tposition: absolute;\r\n\tleft: 0;\r\n\ttop: 0;\r\n\t}\r\n.leaflet-container {\r\n\toverflow: hidden;\r\n\t}\r\n.leaflet-tile,\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow {\r\n\t-webkit-user-select: none;\r\n\t   -moz-user-select: none;\r\n\t        user-select: none;\r\n\t  -webkit-user-drag: none;\r\n\t}\r\n/* Prevents IE11 from highlighting tiles in blue */\r\n.leaflet-tile::selection {\r\n\tbackground: transparent;\r\n}\r\n/* Safari renders non-retina tile on retina better with this, but Chrome is worse */\r\n.leaflet-safari .leaflet-tile {\r\n\timage-rendering: -webkit-optimize-contrast;\r\n\t}\r\n/* hack that prevents hw layers \"stretching\" when loading new tiles */\r\n.leaflet-safari .leaflet-tile-container {\r\n\twidth: 1600px;\r\n\theight: 1600px;\r\n\t-webkit-transform-origin: 0 0;\r\n\t}\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow {\r\n\tdisplay: block;\r\n\t}\r\n/* .leaflet-container svg: reset svg max-width decleration shipped in Joomla! (joomla.org) 3.x */\r\n/* .leaflet-container img: map is broken in FF if you have max-width: 100% on tiles */\r\n.leaflet-container .leaflet-overlay-pane svg,\r\n.leaflet-container .leaflet-marker-pane img,\r\n.leaflet-container .leaflet-shadow-pane img,\r\n.leaflet-container .leaflet-tile-pane img,\r\n.leaflet-container img.leaflet-image-layer,\r\n.leaflet-container .leaflet-tile {\r\n\tmax-width: none !important;\r\n\tmax-height: none !important;\r\n\t}\r\n\r\n.leaflet-container.leaflet-touch-zoom {\r\n\t-ms-touch-action: pan-x pan-y;\r\n\ttouch-action: pan-x pan-y;\r\n\t}\r\n.leaflet-container.leaflet-touch-drag {\r\n\t-ms-touch-action: pinch-zoom;\r\n\t/* Fallback for FF which doesn't support pinch-zoom */\r\n\ttouch-action: none;\r\n\ttouch-action: pinch-zoom;\r\n}\r\n.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {\r\n\t-ms-touch-action: none;\r\n\ttouch-action: none;\r\n}\r\n.leaflet-container {\r\n\t-webkit-tap-highlight-color: transparent;\r\n}\r\n.leaflet-container a {\r\n\t-webkit-tap-highlight-color: rgba(51, 181, 229, 0.4);\r\n}\r\n.leaflet-tile {\r\n\tfilter: inherit;\r\n\tvisibility: hidden;\r\n\t}\r\n.leaflet-tile-loaded {\r\n\tvisibility: inherit;\r\n\t}\r\n.leaflet-zoom-box {\r\n\twidth: 0;\r\n\theight: 0;\r\n\t-moz-box-sizing: border-box;\r\n\t     box-sizing: border-box;\r\n\tz-index: 800;\r\n\t}\r\n/* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */\r\n.leaflet-overlay-pane svg {\r\n\t-moz-user-select: none;\r\n\t}\r\n\r\n.leaflet-pane         { z-index: 400; }\r\n\r\n.leaflet-tile-pane    { z-index: 200; }\r\n.leaflet-overlay-pane { z-index: 400; }\r\n.leaflet-shadow-pane  { z-index: 500; }\r\n.leaflet-marker-pane  { z-index: 600; }\r\n.leaflet-tooltip-pane   { z-index: 650; }\r\n.leaflet-popup-pane   { z-index: 700; }\r\n\r\n.leaflet-map-pane canvas { z-index: 100; }\r\n.leaflet-map-pane svg    { z-index: 200; }\r\n\r\n.leaflet-vml-shape {\r\n\twidth: 1px;\r\n\theight: 1px;\r\n\t}\r\n.lvml {\r\n\tbehavior: url(#default#VML);\r\n\tdisplay: inline-block;\r\n\tposition: absolute;\r\n\t}\r\n\r\n\r\n/* control positioning */\r\n\r\n.leaflet-control {\r\n\tposition: relative;\r\n\tz-index: 800;\r\n\tpointer-events: visiblePainted; /* IE 9-10 doesn't have auto */\r\n\tpointer-events: auto;\r\n\t}\r\n.leaflet-top,\r\n.leaflet-bottom {\r\n\tposition: absolute;\r\n\tz-index: 1000;\r\n\tpointer-events: none;\r\n\t}\r\n.leaflet-top {\r\n\ttop: 0;\r\n\t}\r\n.leaflet-right {\r\n\tright: 0;\r\n\t}\r\n.leaflet-bottom {\r\n\tbottom: 0;\r\n\t}\r\n.leaflet-left {\r\n\tleft: 0;\r\n\t}\r\n.leaflet-control {\r\n\tfloat: left;\r\n\tclear: both;\r\n\t}\r\n.leaflet-right .leaflet-control {\r\n\tfloat: right;\r\n\t}\r\n.leaflet-top .leaflet-control {\r\n\tmargin-top: 10px;\r\n\t}\r\n.leaflet-bottom .leaflet-control {\r\n\tmargin-bottom: 10px;\r\n\t}\r\n.leaflet-left .leaflet-control {\r\n\tmargin-left: 10px;\r\n\t}\r\n.leaflet-right .leaflet-control {\r\n\tmargin-right: 10px;\r\n\t}\r\n\r\n\r\n/* zoom and fade animations */\r\n\r\n.leaflet-fade-anim .leaflet-tile {\r\n\twill-change: opacity;\r\n\t}\r\n.leaflet-fade-anim .leaflet-popup {\r\n\topacity: 0;\r\n\t-webkit-transition: opacity 0.2s linear;\r\n\t   -moz-transition: opacity 0.2s linear;\r\n\t        transition: opacity 0.2s linear;\r\n\t}\r\n.leaflet-fade-anim .leaflet-map-pane .leaflet-popup {\r\n\topacity: 1;\r\n\t}\r\n.leaflet-zoom-animated {\r\n\t-webkit-transform-origin: 0 0;\r\n\t    -ms-transform-origin: 0 0;\r\n\t        transform-origin: 0 0;\r\n\t}\r\n.leaflet-zoom-anim .leaflet-zoom-animated {\r\n\twill-change: transform;\r\n\t}\r\n.leaflet-zoom-anim .leaflet-zoom-animated {\r\n\t-webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t   -moz-transition:    -moz-transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t        transition:         transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t}\r\n.leaflet-zoom-anim .leaflet-tile,\r\n.leaflet-pan-anim .leaflet-tile {\r\n\t-webkit-transition: none;\r\n\t   -moz-transition: none;\r\n\t        transition: none;\r\n\t}\r\n\r\n.leaflet-zoom-anim .leaflet-zoom-hide {\r\n\tvisibility: hidden;\r\n\t}\r\n\r\n\r\n/* cursors */\r\n\r\n.leaflet-interactive {\r\n\tcursor: pointer;\r\n\t}\r\n.leaflet-grab {\r\n\tcursor: -webkit-grab;\r\n\tcursor:    -moz-grab;\r\n\tcursor:         grab;\r\n\t}\r\n.leaflet-crosshair,\r\n.leaflet-crosshair .leaflet-interactive {\r\n\tcursor: crosshair;\r\n\t}\r\n.leaflet-popup-pane,\r\n.leaflet-control {\r\n\tcursor: auto;\r\n\t}\r\n.leaflet-dragging .leaflet-grab,\r\n.leaflet-dragging .leaflet-grab .leaflet-interactive,\r\n.leaflet-dragging .leaflet-marker-draggable {\r\n\tcursor: move;\r\n\tcursor: -webkit-grabbing;\r\n\tcursor:    -moz-grabbing;\r\n\tcursor:         grabbing;\r\n\t}\r\n\r\n/* marker & overlays interactivity */\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow,\r\n.leaflet-image-layer,\r\n.leaflet-pane > svg path,\r\n.leaflet-tile-container {\r\n\tpointer-events: none;\r\n\t}\r\n\r\n.leaflet-marker-icon.leaflet-interactive,\r\n.leaflet-image-layer.leaflet-interactive,\r\n.leaflet-pane > svg path.leaflet-interactive,\r\nsvg.leaflet-image-layer.leaflet-interactive path {\r\n\tpointer-events: visiblePainted; /* IE 9-10 doesn't have auto */\r\n\tpointer-events: auto;\r\n\t}\r\n\r\n/* visual tweaks */\r\n\r\n.leaflet-container {\r\n\tbackground: #ddd;\r\n\toutline: 0;\r\n\t}\r\n.leaflet-container a {\r\n\tcolor: #0078A8;\r\n\t}\r\n.leaflet-container a.leaflet-active {\r\n\toutline: 2px solid orange;\r\n\t}\r\n.leaflet-zoom-box {\r\n\tborder: 2px dotted #38f;\r\n\tbackground: rgba(255,255,255,0.5);\r\n\t}\r\n\r\n\r\n/* general typography */\r\n.leaflet-container {\r\n\tfont: 12px/1.5 \"Helvetica Neue\", Arial, Helvetica, sans-serif;\r\n\t}\r\n\r\n\r\n/* general toolbar styles */\r\n\r\n.leaflet-bar {\r\n\tbox-shadow: 0 1px 5px rgba(0,0,0,0.65);\r\n\tborder-radius: 4px;\r\n\t}\r\n.leaflet-bar a,\r\n.leaflet-bar a:hover {\r\n\tbackground-color: #fff;\r\n\tborder-bottom: 1px solid #ccc;\r\n\twidth: 26px;\r\n\theight: 26px;\r\n\tline-height: 26px;\r\n\tdisplay: block;\r\n\ttext-align: center;\r\n\ttext-decoration: none;\r\n\tcolor: black;\r\n\t}\r\n.leaflet-bar a,\r\n.leaflet-control-layers-toggle {\r\n\tbackground-position: 50% 50%;\r\n\tbackground-repeat: no-repeat;\r\n\tdisplay: block;\r\n\t}\r\n.leaflet-bar a:hover {\r\n\tbackground-color: #f4f4f4;\r\n\t}\r\n.leaflet-bar a:first-child {\r\n\tborder-top-left-radius: 4px;\r\n\tborder-top-right-radius: 4px;\r\n\t}\r\n.leaflet-bar a:last-child {\r\n\tborder-bottom-left-radius: 4px;\r\n\tborder-bottom-right-radius: 4px;\r\n\tborder-bottom: none;\r\n\t}\r\n.leaflet-bar a.leaflet-disabled {\r\n\tcursor: default;\r\n\tbackground-color: #f4f4f4;\r\n\tcolor: #bbb;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-bar a {\r\n\twidth: 30px;\r\n\theight: 30px;\r\n\tline-height: 30px;\r\n\t}\r\n.leaflet-touch .leaflet-bar a:first-child {\r\n\tborder-top-left-radius: 2px;\r\n\tborder-top-right-radius: 2px;\r\n\t}\r\n.leaflet-touch .leaflet-bar a:last-child {\r\n\tborder-bottom-left-radius: 2px;\r\n\tborder-bottom-right-radius: 2px;\r\n\t}\r\n\r\n/* zoom control */\r\n\r\n.leaflet-control-zoom-in,\r\n.leaflet-control-zoom-out {\r\n\tfont: bold 18px 'Lucida Console', Monaco, monospace;\r\n\ttext-indent: 1px;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out  {\r\n\tfont-size: 22px;\r\n\t}\r\n\r\n\r\n/* layers control */\r\n\r\n.leaflet-control-layers {\r\n\tbox-shadow: 0 1px 5px rgba(0,0,0,0.4);\r\n\tbackground: #fff;\r\n\tborder-radius: 5px;\r\n\t}\r\n.leaflet-control-layers-toggle {\r\n\tbackground-image: url(" + escape(__webpack_require__(21)) + ");\r\n\twidth: 36px;\r\n\theight: 36px;\r\n\t}\r\n.leaflet-retina .leaflet-control-layers-toggle {\r\n\tbackground-image: url(" + escape(__webpack_require__(22)) + ");\r\n\tbackground-size: 26px 26px;\r\n\t}\r\n.leaflet-touch .leaflet-control-layers-toggle {\r\n\twidth: 44px;\r\n\theight: 44px;\r\n\t}\r\n.leaflet-control-layers .leaflet-control-layers-list,\r\n.leaflet-control-layers-expanded .leaflet-control-layers-toggle {\r\n\tdisplay: none;\r\n\t}\r\n.leaflet-control-layers-expanded .leaflet-control-layers-list {\r\n\tdisplay: block;\r\n\tposition: relative;\r\n\t}\r\n.leaflet-control-layers-expanded {\r\n\tpadding: 6px 10px 6px 6px;\r\n\tcolor: #333;\r\n\tbackground: #fff;\r\n\t}\r\n.leaflet-control-layers-scrollbar {\r\n\toverflow-y: scroll;\r\n\toverflow-x: hidden;\r\n\tpadding-right: 5px;\r\n\t}\r\n.leaflet-control-layers-selector {\r\n\tmargin-top: 2px;\r\n\tposition: relative;\r\n\ttop: 1px;\r\n\t}\r\n.leaflet-control-layers label {\r\n\tdisplay: block;\r\n\t}\r\n.leaflet-control-layers-separator {\r\n\theight: 0;\r\n\tborder-top: 1px solid #ddd;\r\n\tmargin: 5px -10px 5px -6px;\r\n\t}\r\n\r\n/* Default icon URLs */\r\n.leaflet-default-icon-path {\r\n\tbackground-image: url(" + escape(__webpack_require__(23)) + ");\r\n\t}\r\n\r\n\r\n/* attribution and scale controls */\r\n\r\n.leaflet-container .leaflet-control-attribution {\r\n\tbackground: #fff;\r\n\tbackground: rgba(255, 255, 255, 0.7);\r\n\tmargin: 0;\r\n\t}\r\n.leaflet-control-attribution,\r\n.leaflet-control-scale-line {\r\n\tpadding: 0 5px;\r\n\tcolor: #333;\r\n\t}\r\n.leaflet-control-attribution a {\r\n\ttext-decoration: none;\r\n\t}\r\n.leaflet-control-attribution a:hover {\r\n\ttext-decoration: underline;\r\n\t}\r\n.leaflet-container .leaflet-control-attribution,\r\n.leaflet-container .leaflet-control-scale {\r\n\tfont-size: 11px;\r\n\t}\r\n.leaflet-left .leaflet-control-scale {\r\n\tmargin-left: 5px;\r\n\t}\r\n.leaflet-bottom .leaflet-control-scale {\r\n\tmargin-bottom: 5px;\r\n\t}\r\n.leaflet-control-scale-line {\r\n\tborder: 2px solid #777;\r\n\tborder-top: none;\r\n\tline-height: 1.1;\r\n\tpadding: 2px 5px 1px;\r\n\tfont-size: 11px;\r\n\twhite-space: nowrap;\r\n\toverflow: hidden;\r\n\t-moz-box-sizing: border-box;\r\n\t     box-sizing: border-box;\r\n\r\n\tbackground: #fff;\r\n\tbackground: rgba(255, 255, 255, 0.5);\r\n\t}\r\n.leaflet-control-scale-line:not(:first-child) {\r\n\tborder-top: 2px solid #777;\r\n\tborder-bottom: none;\r\n\tmargin-top: -2px;\r\n\t}\r\n.leaflet-control-scale-line:not(:first-child):not(:last-child) {\r\n\tborder-bottom: 2px solid #777;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-control-attribution,\r\n.leaflet-touch .leaflet-control-layers,\r\n.leaflet-touch .leaflet-bar {\r\n\tbox-shadow: none;\r\n\t}\r\n.leaflet-touch .leaflet-control-layers,\r\n.leaflet-touch .leaflet-bar {\r\n\tborder: 2px solid rgba(0,0,0,0.2);\r\n\tbackground-clip: padding-box;\r\n\t}\r\n\r\n\r\n/* popup */\r\n\r\n.leaflet-popup {\r\n\tposition: absolute;\r\n\ttext-align: center;\r\n\tmargin-bottom: 20px;\r\n\t}\r\n.leaflet-popup-content-wrapper {\r\n\tpadding: 1px;\r\n\ttext-align: left;\r\n\tborder-radius: 12px;\r\n\t}\r\n.leaflet-popup-content {\r\n\tmargin: 13px 19px;\r\n\tline-height: 1.4;\r\n\t}\r\n.leaflet-popup-content p {\r\n\tmargin: 18px 0;\r\n\t}\r\n.leaflet-popup-tip-container {\r\n\twidth: 40px;\r\n\theight: 20px;\r\n\tposition: absolute;\r\n\tleft: 50%;\r\n\tmargin-left: -20px;\r\n\toverflow: hidden;\r\n\tpointer-events: none;\r\n\t}\r\n.leaflet-popup-tip {\r\n\twidth: 17px;\r\n\theight: 17px;\r\n\tpadding: 1px;\r\n\r\n\tmargin: -10px auto 0;\r\n\r\n\t-webkit-transform: rotate(45deg);\r\n\t   -moz-transform: rotate(45deg);\r\n\t    -ms-transform: rotate(45deg);\r\n\t        transform: rotate(45deg);\r\n\t}\r\n.leaflet-popup-content-wrapper,\r\n.leaflet-popup-tip {\r\n\tbackground: white;\r\n\tcolor: #333;\r\n\tbox-shadow: 0 3px 14px rgba(0,0,0,0.4);\r\n\t}\r\n.leaflet-container a.leaflet-popup-close-button {\r\n\tposition: absolute;\r\n\ttop: 0;\r\n\tright: 0;\r\n\tpadding: 4px 4px 0 0;\r\n\tborder: none;\r\n\ttext-align: center;\r\n\twidth: 18px;\r\n\theight: 14px;\r\n\tfont: 16px/14px Tahoma, Verdana, sans-serif;\r\n\tcolor: #c3c3c3;\r\n\ttext-decoration: none;\r\n\tfont-weight: bold;\r\n\tbackground: transparent;\r\n\t}\r\n.leaflet-container a.leaflet-popup-close-button:hover {\r\n\tcolor: #999;\r\n\t}\r\n.leaflet-popup-scrolled {\r\n\toverflow: auto;\r\n\tborder-bottom: 1px solid #ddd;\r\n\tborder-top: 1px solid #ddd;\r\n\t}\r\n\r\n.leaflet-oldie .leaflet-popup-content-wrapper {\r\n\tzoom: 1;\r\n\t}\r\n.leaflet-oldie .leaflet-popup-tip {\r\n\twidth: 24px;\r\n\tmargin: 0 auto;\r\n\r\n\t-ms-filter: \"progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678)\";\r\n\tfilter: progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678);\r\n\t}\r\n.leaflet-oldie .leaflet-popup-tip-container {\r\n\tmargin-top: -1px;\r\n\t}\r\n\r\n.leaflet-oldie .leaflet-control-zoom,\r\n.leaflet-oldie .leaflet-control-layers,\r\n.leaflet-oldie .leaflet-popup-content-wrapper,\r\n.leaflet-oldie .leaflet-popup-tip {\r\n\tborder: 1px solid #999;\r\n\t}\r\n\r\n\r\n/* div icon */\r\n\r\n.leaflet-div-icon {\r\n\tbackground: #fff;\r\n\tborder: 1px solid #666;\r\n\t}\r\n\r\n\r\n/* Tooltip */\r\n/* Base styles for the element that has a tooltip */\r\n.leaflet-tooltip {\r\n\tposition: absolute;\r\n\tpadding: 6px;\r\n\tbackground-color: #fff;\r\n\tborder: 1px solid #fff;\r\n\tborder-radius: 3px;\r\n\tcolor: #222;\r\n\twhite-space: nowrap;\r\n\t-webkit-user-select: none;\r\n\t-moz-user-select: none;\r\n\t-ms-user-select: none;\r\n\tuser-select: none;\r\n\tpointer-events: none;\r\n\tbox-shadow: 0 1px 3px rgba(0,0,0,0.4);\r\n\t}\r\n.leaflet-tooltip.leaflet-clickable {\r\n\tcursor: pointer;\r\n\tpointer-events: auto;\r\n\t}\r\n.leaflet-tooltip-top:before,\r\n.leaflet-tooltip-bottom:before,\r\n.leaflet-tooltip-left:before,\r\n.leaflet-tooltip-right:before {\r\n\tposition: absolute;\r\n\tpointer-events: none;\r\n\tborder: 6px solid transparent;\r\n\tbackground: transparent;\r\n\tcontent: \"\";\r\n\t}\r\n\r\n/* Directions */\r\n\r\n.leaflet-tooltip-bottom {\r\n\tmargin-top: 6px;\r\n}\r\n.leaflet-tooltip-top {\r\n\tmargin-top: -6px;\r\n}\r\n.leaflet-tooltip-bottom:before,\r\n.leaflet-tooltip-top:before {\r\n\tleft: 50%;\r\n\tmargin-left: -6px;\r\n\t}\r\n.leaflet-tooltip-top:before {\r\n\tbottom: 0;\r\n\tmargin-bottom: -12px;\r\n\tborder-top-color: #fff;\r\n\t}\r\n.leaflet-tooltip-bottom:before {\r\n\ttop: 0;\r\n\tmargin-top: -12px;\r\n\tmargin-left: -6px;\r\n\tborder-bottom-color: #fff;\r\n\t}\r\n.leaflet-tooltip-left {\r\n\tmargin-left: -6px;\r\n}\r\n.leaflet-tooltip-right {\r\n\tmargin-left: 6px;\r\n}\r\n.leaflet-tooltip-left:before,\r\n.leaflet-tooltip-right:before {\r\n\ttop: 50%;\r\n\tmargin-top: -6px;\r\n\t}\r\n.leaflet-tooltip-left:before {\r\n\tright: 0;\r\n\tmargin-right: -12px;\r\n\tborder-left-color: #fff;\r\n\t}\r\n.leaflet-tooltip-right:before {\r\n\tleft: 0;\r\n\tmargin-left: -12px;\r\n\tborder-right-color: #fff;\r\n\t}\r\n", ""]);
+exports.push([module.i, "/* required styles */\r\n\r\n.leaflet-pane,\r\n.leaflet-tile,\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow,\r\n.leaflet-tile-container,\r\n.leaflet-pane > svg,\r\n.leaflet-pane > canvas,\r\n.leaflet-zoom-box,\r\n.leaflet-image-layer,\r\n.leaflet-layer {\r\n\tposition: absolute;\r\n\tleft: 0;\r\n\ttop: 0;\r\n\t}\r\n.leaflet-container {\r\n\toverflow: hidden;\r\n\t}\r\n.leaflet-tile,\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow {\r\n\t-webkit-user-select: none;\r\n\t   -moz-user-select: none;\r\n\t        user-select: none;\r\n\t  -webkit-user-drag: none;\r\n\t}\r\n/* Prevents IE11 from highlighting tiles in blue */\r\n.leaflet-tile::selection {\r\n\tbackground: transparent;\r\n}\r\n/* Safari renders non-retina tile on retina better with this, but Chrome is worse */\r\n.leaflet-safari .leaflet-tile {\r\n\timage-rendering: -webkit-optimize-contrast;\r\n\t}\r\n/* hack that prevents hw layers \"stretching\" when loading new tiles */\r\n.leaflet-safari .leaflet-tile-container {\r\n\twidth: 1600px;\r\n\theight: 1600px;\r\n\t-webkit-transform-origin: 0 0;\r\n\t}\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow {\r\n\tdisplay: block;\r\n\t}\r\n/* .leaflet-container svg: reset svg max-width decleration shipped in Joomla! (joomla.org) 3.x */\r\n/* .leaflet-container img: map is broken in FF if you have max-width: 100% on tiles */\r\n.leaflet-container .leaflet-overlay-pane svg,\r\n.leaflet-container .leaflet-marker-pane img,\r\n.leaflet-container .leaflet-shadow-pane img,\r\n.leaflet-container .leaflet-tile-pane img,\r\n.leaflet-container img.leaflet-image-layer,\r\n.leaflet-container .leaflet-tile {\r\n\tmax-width: none !important;\r\n\tmax-height: none !important;\r\n\t}\r\n\r\n.leaflet-container.leaflet-touch-zoom {\r\n\t-ms-touch-action: pan-x pan-y;\r\n\ttouch-action: pan-x pan-y;\r\n\t}\r\n.leaflet-container.leaflet-touch-drag {\r\n\t-ms-touch-action: pinch-zoom;\r\n\t/* Fallback for FF which doesn't support pinch-zoom */\r\n\ttouch-action: none;\r\n\ttouch-action: pinch-zoom;\r\n}\r\n.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {\r\n\t-ms-touch-action: none;\r\n\ttouch-action: none;\r\n}\r\n.leaflet-container {\r\n\t-webkit-tap-highlight-color: transparent;\r\n}\r\n.leaflet-container a {\r\n\t-webkit-tap-highlight-color: rgba(51, 181, 229, 0.4);\r\n}\r\n.leaflet-tile {\r\n\tfilter: inherit;\r\n\tvisibility: hidden;\r\n\t}\r\n.leaflet-tile-loaded {\r\n\tvisibility: inherit;\r\n\t}\r\n.leaflet-zoom-box {\r\n\twidth: 0;\r\n\theight: 0;\r\n\t-moz-box-sizing: border-box;\r\n\t     box-sizing: border-box;\r\n\tz-index: 800;\r\n\t}\r\n/* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */\r\n.leaflet-overlay-pane svg {\r\n\t-moz-user-select: none;\r\n\t}\r\n\r\n.leaflet-pane         { z-index: 400; }\r\n\r\n.leaflet-tile-pane    { z-index: 200; }\r\n.leaflet-overlay-pane { z-index: 400; }\r\n.leaflet-shadow-pane  { z-index: 500; }\r\n.leaflet-marker-pane  { z-index: 600; }\r\n.leaflet-tooltip-pane   { z-index: 650; }\r\n.leaflet-popup-pane   { z-index: 700; }\r\n\r\n.leaflet-map-pane canvas { z-index: 100; }\r\n.leaflet-map-pane svg    { z-index: 200; }\r\n\r\n.leaflet-vml-shape {\r\n\twidth: 1px;\r\n\theight: 1px;\r\n\t}\r\n.lvml {\r\n\tbehavior: url(#default#VML);\r\n\tdisplay: inline-block;\r\n\tposition: absolute;\r\n\t}\r\n\r\n\r\n/* control positioning */\r\n\r\n.leaflet-control {\r\n\tposition: relative;\r\n\tz-index: 800;\r\n\tpointer-events: visiblePainted; /* IE 9-10 doesn't have auto */\r\n\tpointer-events: auto;\r\n\t}\r\n.leaflet-top,\r\n.leaflet-bottom {\r\n\tposition: absolute;\r\n\tz-index: 1000;\r\n\tpointer-events: none;\r\n\t}\r\n.leaflet-top {\r\n\ttop: 0;\r\n\t}\r\n.leaflet-right {\r\n\tright: 0;\r\n\t}\r\n.leaflet-bottom {\r\n\tbottom: 0;\r\n\t}\r\n.leaflet-left {\r\n\tleft: 0;\r\n\t}\r\n.leaflet-control {\r\n\tfloat: left;\r\n\tclear: both;\r\n\t}\r\n.leaflet-right .leaflet-control {\r\n\tfloat: right;\r\n\t}\r\n.leaflet-top .leaflet-control {\r\n\tmargin-top: 10px;\r\n\t}\r\n.leaflet-bottom .leaflet-control {\r\n\tmargin-bottom: 10px;\r\n\t}\r\n.leaflet-left .leaflet-control {\r\n\tmargin-left: 10px;\r\n\t}\r\n.leaflet-right .leaflet-control {\r\n\tmargin-right: 10px;\r\n\t}\r\n\r\n\r\n/* zoom and fade animations */\r\n\r\n.leaflet-fade-anim .leaflet-tile {\r\n\twill-change: opacity;\r\n\t}\r\n.leaflet-fade-anim .leaflet-popup {\r\n\topacity: 0;\r\n\t-webkit-transition: opacity 0.2s linear;\r\n\t   -moz-transition: opacity 0.2s linear;\r\n\t        transition: opacity 0.2s linear;\r\n\t}\r\n.leaflet-fade-anim .leaflet-map-pane .leaflet-popup {\r\n\topacity: 1;\r\n\t}\r\n.leaflet-zoom-animated {\r\n\t-webkit-transform-origin: 0 0;\r\n\t    -ms-transform-origin: 0 0;\r\n\t        transform-origin: 0 0;\r\n\t}\r\n.leaflet-zoom-anim .leaflet-zoom-animated {\r\n\twill-change: transform;\r\n\t}\r\n.leaflet-zoom-anim .leaflet-zoom-animated {\r\n\t-webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t   -moz-transition:    -moz-transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t        transition:         transform 0.25s cubic-bezier(0,0,0.25,1);\r\n\t}\r\n.leaflet-zoom-anim .leaflet-tile,\r\n.leaflet-pan-anim .leaflet-tile {\r\n\t-webkit-transition: none;\r\n\t   -moz-transition: none;\r\n\t        transition: none;\r\n\t}\r\n\r\n.leaflet-zoom-anim .leaflet-zoom-hide {\r\n\tvisibility: hidden;\r\n\t}\r\n\r\n\r\n/* cursors */\r\n\r\n.leaflet-interactive {\r\n\tcursor: pointer;\r\n\t}\r\n.leaflet-grab {\r\n\tcursor: -webkit-grab;\r\n\tcursor:    -moz-grab;\r\n\tcursor:         grab;\r\n\t}\r\n.leaflet-crosshair,\r\n.leaflet-crosshair .leaflet-interactive {\r\n\tcursor: crosshair;\r\n\t}\r\n.leaflet-popup-pane,\r\n.leaflet-control {\r\n\tcursor: auto;\r\n\t}\r\n.leaflet-dragging .leaflet-grab,\r\n.leaflet-dragging .leaflet-grab .leaflet-interactive,\r\n.leaflet-dragging .leaflet-marker-draggable {\r\n\tcursor: move;\r\n\tcursor: -webkit-grabbing;\r\n\tcursor:    -moz-grabbing;\r\n\tcursor:         grabbing;\r\n\t}\r\n\r\n/* marker & overlays interactivity */\r\n.leaflet-marker-icon,\r\n.leaflet-marker-shadow,\r\n.leaflet-image-layer,\r\n.leaflet-pane > svg path,\r\n.leaflet-tile-container {\r\n\tpointer-events: none;\r\n\t}\r\n\r\n.leaflet-marker-icon.leaflet-interactive,\r\n.leaflet-image-layer.leaflet-interactive,\r\n.leaflet-pane > svg path.leaflet-interactive,\r\nsvg.leaflet-image-layer.leaflet-interactive path {\r\n\tpointer-events: visiblePainted; /* IE 9-10 doesn't have auto */\r\n\tpointer-events: auto;\r\n\t}\r\n\r\n/* visual tweaks */\r\n\r\n.leaflet-container {\r\n\tbackground: #ddd;\r\n\toutline: 0;\r\n\t}\r\n.leaflet-container a {\r\n\tcolor: #0078A8;\r\n\t}\r\n.leaflet-container a.leaflet-active {\r\n\toutline: 2px solid orange;\r\n\t}\r\n.leaflet-zoom-box {\r\n\tborder: 2px dotted #38f;\r\n\tbackground: rgba(255,255,255,0.5);\r\n\t}\r\n\r\n\r\n/* general typography */\r\n.leaflet-container {\r\n\tfont: 12px/1.5 \"Helvetica Neue\", Arial, Helvetica, sans-serif;\r\n\t}\r\n\r\n\r\n/* general toolbar styles */\r\n\r\n.leaflet-bar {\r\n\tbox-shadow: 0 1px 5px rgba(0,0,0,0.65);\r\n\tborder-radius: 4px;\r\n\t}\r\n.leaflet-bar a,\r\n.leaflet-bar a:hover {\r\n\tbackground-color: #fff;\r\n\tborder-bottom: 1px solid #ccc;\r\n\twidth: 26px;\r\n\theight: 26px;\r\n\tline-height: 26px;\r\n\tdisplay: block;\r\n\ttext-align: center;\r\n\ttext-decoration: none;\r\n\tcolor: black;\r\n\t}\r\n.leaflet-bar a,\r\n.leaflet-control-layers-toggle {\r\n\tbackground-position: 50% 50%;\r\n\tbackground-repeat: no-repeat;\r\n\tdisplay: block;\r\n\t}\r\n.leaflet-bar a:hover {\r\n\tbackground-color: #f4f4f4;\r\n\t}\r\n.leaflet-bar a:first-child {\r\n\tborder-top-left-radius: 4px;\r\n\tborder-top-right-radius: 4px;\r\n\t}\r\n.leaflet-bar a:last-child {\r\n\tborder-bottom-left-radius: 4px;\r\n\tborder-bottom-right-radius: 4px;\r\n\tborder-bottom: none;\r\n\t}\r\n.leaflet-bar a.leaflet-disabled {\r\n\tcursor: default;\r\n\tbackground-color: #f4f4f4;\r\n\tcolor: #bbb;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-bar a {\r\n\twidth: 30px;\r\n\theight: 30px;\r\n\tline-height: 30px;\r\n\t}\r\n.leaflet-touch .leaflet-bar a:first-child {\r\n\tborder-top-left-radius: 2px;\r\n\tborder-top-right-radius: 2px;\r\n\t}\r\n.leaflet-touch .leaflet-bar a:last-child {\r\n\tborder-bottom-left-radius: 2px;\r\n\tborder-bottom-right-radius: 2px;\r\n\t}\r\n\r\n/* zoom control */\r\n\r\n.leaflet-control-zoom-in,\r\n.leaflet-control-zoom-out {\r\n\tfont: bold 18px 'Lucida Console', Monaco, monospace;\r\n\ttext-indent: 1px;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out  {\r\n\tfont-size: 22px;\r\n\t}\r\n\r\n\r\n/* layers control */\r\n\r\n.leaflet-control-layers {\r\n\tbox-shadow: 0 1px 5px rgba(0,0,0,0.4);\r\n\tbackground: #fff;\r\n\tborder-radius: 5px;\r\n\t}\r\n.leaflet-control-layers-toggle {\r\n\tbackground-image: url(" + escape(__webpack_require__(61)) + ");\r\n\twidth: 36px;\r\n\theight: 36px;\r\n\t}\r\n.leaflet-retina .leaflet-control-layers-toggle {\r\n\tbackground-image: url(" + escape(__webpack_require__(62)) + ");\r\n\tbackground-size: 26px 26px;\r\n\t}\r\n.leaflet-touch .leaflet-control-layers-toggle {\r\n\twidth: 44px;\r\n\theight: 44px;\r\n\t}\r\n.leaflet-control-layers .leaflet-control-layers-list,\r\n.leaflet-control-layers-expanded .leaflet-control-layers-toggle {\r\n\tdisplay: none;\r\n\t}\r\n.leaflet-control-layers-expanded .leaflet-control-layers-list {\r\n\tdisplay: block;\r\n\tposition: relative;\r\n\t}\r\n.leaflet-control-layers-expanded {\r\n\tpadding: 6px 10px 6px 6px;\r\n\tcolor: #333;\r\n\tbackground: #fff;\r\n\t}\r\n.leaflet-control-layers-scrollbar {\r\n\toverflow-y: scroll;\r\n\toverflow-x: hidden;\r\n\tpadding-right: 5px;\r\n\t}\r\n.leaflet-control-layers-selector {\r\n\tmargin-top: 2px;\r\n\tposition: relative;\r\n\ttop: 1px;\r\n\t}\r\n.leaflet-control-layers label {\r\n\tdisplay: block;\r\n\t}\r\n.leaflet-control-layers-separator {\r\n\theight: 0;\r\n\tborder-top: 1px solid #ddd;\r\n\tmargin: 5px -10px 5px -6px;\r\n\t}\r\n\r\n/* Default icon URLs */\r\n.leaflet-default-icon-path {\r\n\tbackground-image: url(" + escape(__webpack_require__(63)) + ");\r\n\t}\r\n\r\n\r\n/* attribution and scale controls */\r\n\r\n.leaflet-container .leaflet-control-attribution {\r\n\tbackground: #fff;\r\n\tbackground: rgba(255, 255, 255, 0.7);\r\n\tmargin: 0;\r\n\t}\r\n.leaflet-control-attribution,\r\n.leaflet-control-scale-line {\r\n\tpadding: 0 5px;\r\n\tcolor: #333;\r\n\t}\r\n.leaflet-control-attribution a {\r\n\ttext-decoration: none;\r\n\t}\r\n.leaflet-control-attribution a:hover {\r\n\ttext-decoration: underline;\r\n\t}\r\n.leaflet-container .leaflet-control-attribution,\r\n.leaflet-container .leaflet-control-scale {\r\n\tfont-size: 11px;\r\n\t}\r\n.leaflet-left .leaflet-control-scale {\r\n\tmargin-left: 5px;\r\n\t}\r\n.leaflet-bottom .leaflet-control-scale {\r\n\tmargin-bottom: 5px;\r\n\t}\r\n.leaflet-control-scale-line {\r\n\tborder: 2px solid #777;\r\n\tborder-top: none;\r\n\tline-height: 1.1;\r\n\tpadding: 2px 5px 1px;\r\n\tfont-size: 11px;\r\n\twhite-space: nowrap;\r\n\toverflow: hidden;\r\n\t-moz-box-sizing: border-box;\r\n\t     box-sizing: border-box;\r\n\r\n\tbackground: #fff;\r\n\tbackground: rgba(255, 255, 255, 0.5);\r\n\t}\r\n.leaflet-control-scale-line:not(:first-child) {\r\n\tborder-top: 2px solid #777;\r\n\tborder-bottom: none;\r\n\tmargin-top: -2px;\r\n\t}\r\n.leaflet-control-scale-line:not(:first-child):not(:last-child) {\r\n\tborder-bottom: 2px solid #777;\r\n\t}\r\n\r\n.leaflet-touch .leaflet-control-attribution,\r\n.leaflet-touch .leaflet-control-layers,\r\n.leaflet-touch .leaflet-bar {\r\n\tbox-shadow: none;\r\n\t}\r\n.leaflet-touch .leaflet-control-layers,\r\n.leaflet-touch .leaflet-bar {\r\n\tborder: 2px solid rgba(0,0,0,0.2);\r\n\tbackground-clip: padding-box;\r\n\t}\r\n\r\n\r\n/* popup */\r\n\r\n.leaflet-popup {\r\n\tposition: absolute;\r\n\ttext-align: center;\r\n\tmargin-bottom: 20px;\r\n\t}\r\n.leaflet-popup-content-wrapper {\r\n\tpadding: 1px;\r\n\ttext-align: left;\r\n\tborder-radius: 12px;\r\n\t}\r\n.leaflet-popup-content {\r\n\tmargin: 13px 19px;\r\n\tline-height: 1.4;\r\n\t}\r\n.leaflet-popup-content p {\r\n\tmargin: 18px 0;\r\n\t}\r\n.leaflet-popup-tip-container {\r\n\twidth: 40px;\r\n\theight: 20px;\r\n\tposition: absolute;\r\n\tleft: 50%;\r\n\tmargin-left: -20px;\r\n\toverflow: hidden;\r\n\tpointer-events: none;\r\n\t}\r\n.leaflet-popup-tip {\r\n\twidth: 17px;\r\n\theight: 17px;\r\n\tpadding: 1px;\r\n\r\n\tmargin: -10px auto 0;\r\n\r\n\t-webkit-transform: rotate(45deg);\r\n\t   -moz-transform: rotate(45deg);\r\n\t    -ms-transform: rotate(45deg);\r\n\t        transform: rotate(45deg);\r\n\t}\r\n.leaflet-popup-content-wrapper,\r\n.leaflet-popup-tip {\r\n\tbackground: white;\r\n\tcolor: #333;\r\n\tbox-shadow: 0 3px 14px rgba(0,0,0,0.4);\r\n\t}\r\n.leaflet-container a.leaflet-popup-close-button {\r\n\tposition: absolute;\r\n\ttop: 0;\r\n\tright: 0;\r\n\tpadding: 4px 4px 0 0;\r\n\tborder: none;\r\n\ttext-align: center;\r\n\twidth: 18px;\r\n\theight: 14px;\r\n\tfont: 16px/14px Tahoma, Verdana, sans-serif;\r\n\tcolor: #c3c3c3;\r\n\ttext-decoration: none;\r\n\tfont-weight: bold;\r\n\tbackground: transparent;\r\n\t}\r\n.leaflet-container a.leaflet-popup-close-button:hover {\r\n\tcolor: #999;\r\n\t}\r\n.leaflet-popup-scrolled {\r\n\toverflow: auto;\r\n\tborder-bottom: 1px solid #ddd;\r\n\tborder-top: 1px solid #ddd;\r\n\t}\r\n\r\n.leaflet-oldie .leaflet-popup-content-wrapper {\r\n\tzoom: 1;\r\n\t}\r\n.leaflet-oldie .leaflet-popup-tip {\r\n\twidth: 24px;\r\n\tmargin: 0 auto;\r\n\r\n\t-ms-filter: \"progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678)\";\r\n\tfilter: progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678);\r\n\t}\r\n.leaflet-oldie .leaflet-popup-tip-container {\r\n\tmargin-top: -1px;\r\n\t}\r\n\r\n.leaflet-oldie .leaflet-control-zoom,\r\n.leaflet-oldie .leaflet-control-layers,\r\n.leaflet-oldie .leaflet-popup-content-wrapper,\r\n.leaflet-oldie .leaflet-popup-tip {\r\n\tborder: 1px solid #999;\r\n\t}\r\n\r\n\r\n/* div icon */\r\n\r\n.leaflet-div-icon {\r\n\tbackground: #fff;\r\n\tborder: 1px solid #666;\r\n\t}\r\n\r\n\r\n/* Tooltip */\r\n/* Base styles for the element that has a tooltip */\r\n.leaflet-tooltip {\r\n\tposition: absolute;\r\n\tpadding: 6px;\r\n\tbackground-color: #fff;\r\n\tborder: 1px solid #fff;\r\n\tborder-radius: 3px;\r\n\tcolor: #222;\r\n\twhite-space: nowrap;\r\n\t-webkit-user-select: none;\r\n\t-moz-user-select: none;\r\n\t-ms-user-select: none;\r\n\tuser-select: none;\r\n\tpointer-events: none;\r\n\tbox-shadow: 0 1px 3px rgba(0,0,0,0.4);\r\n\t}\r\n.leaflet-tooltip.leaflet-clickable {\r\n\tcursor: pointer;\r\n\tpointer-events: auto;\r\n\t}\r\n.leaflet-tooltip-top:before,\r\n.leaflet-tooltip-bottom:before,\r\n.leaflet-tooltip-left:before,\r\n.leaflet-tooltip-right:before {\r\n\tposition: absolute;\r\n\tpointer-events: none;\r\n\tborder: 6px solid transparent;\r\n\tbackground: transparent;\r\n\tcontent: \"\";\r\n\t}\r\n\r\n/* Directions */\r\n\r\n.leaflet-tooltip-bottom {\r\n\tmargin-top: 6px;\r\n}\r\n.leaflet-tooltip-top {\r\n\tmargin-top: -6px;\r\n}\r\n.leaflet-tooltip-bottom:before,\r\n.leaflet-tooltip-top:before {\r\n\tleft: 50%;\r\n\tmargin-left: -6px;\r\n\t}\r\n.leaflet-tooltip-top:before {\r\n\tbottom: 0;\r\n\tmargin-bottom: -12px;\r\n\tborder-top-color: #fff;\r\n\t}\r\n.leaflet-tooltip-bottom:before {\r\n\ttop: 0;\r\n\tmargin-top: -12px;\r\n\tmargin-left: -6px;\r\n\tborder-bottom-color: #fff;\r\n\t}\r\n.leaflet-tooltip-left {\r\n\tmargin-left: -6px;\r\n}\r\n.leaflet-tooltip-right {\r\n\tmargin-left: 6px;\r\n}\r\n.leaflet-tooltip-left:before,\r\n.leaflet-tooltip-right:before {\r\n\ttop: 50%;\r\n\tmargin-top: -6px;\r\n\t}\r\n.leaflet-tooltip-left:before {\r\n\tright: 0;\r\n\tmargin-right: -12px;\r\n\tborder-left-color: #fff;\r\n\t}\r\n.leaflet-tooltip-right:before {\r\n\tleft: 0;\r\n\tmargin-left: -12px;\r\n\tborder-right-color: #fff;\r\n\t}\r\n", ""]);
 
 // exports
 
 
 /***/ }),
-/* 20 */
-/***/ (function(module, exports) {
-
-module.exports = function escape(url) {
-    if (typeof url !== 'string') {
-        return url
-    }
-    // If url is already wrapped in quotes, remove them
-    if (/^['"].*['"]$/.test(url)) {
-        url = url.slice(1, -1);
-    }
-    // Should url be wrapped?
-    // See https://drafts.csswg.org/css-values-3/#urls
-    if (/["'() \t\n]/.test(url)) {
-        return '"' + url.replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"'
-    }
-
-    return url
-}
-
-
-/***/ }),
-/* 21 */
+/* 61 */
 /***/ (function(module, exports) {
 
 module.exports = "/images/vendor/leaflet/dist/layers.png?a6137456ed160d7606981aa57c559898";
 
 /***/ }),
-/* 22 */
+/* 62 */
 /***/ (function(module, exports) {
 
 module.exports = "/images/vendor/leaflet/dist/layers-2x.png?4f0283c6ce28e888000e978e537a6a56";
 
 /***/ }),
-/* 23 */
+/* 63 */
 /***/ (function(module, exports) {
 
 module.exports = "/images/vendor/leaflet/dist/marker-icon.png?2273e3d8ad9264b7daa5bdbf8e6b47f8";
 
 /***/ }),
-/* 24 */
+/* 64 */
 /***/ (function(module, exports) {
 
 
@@ -18323,13 +19526,13 @@ module.exports = function (css) {
 
 
 /***/ }),
-/* 25 */
+/* 65 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(26);
+var content = __webpack_require__(66);
 if(typeof content === 'string') content = [[module.i, content, '']];
 // Prepare cssTransformation
 var transform;
@@ -18337,7 +19540,7 @@ var transform;
 var options = {}
 options.transform = transform
 // add the styles to the DOM
-var update = __webpack_require__(3)(content, options);
+var update = __webpack_require__(18)(content, options);
 if(content.locals) module.exports = content.locals;
 // Hot Module Replacement
 if(false) {
@@ -18354,10 +19557,10 @@ if(false) {
 }
 
 /***/ }),
-/* 26 */
+/* 66 */
 /***/ (function(module, exports, __webpack_require__) {
 
-exports = module.exports = __webpack_require__(1)(false);
+exports = module.exports = __webpack_require__(10)(false);
 // imports
 
 
@@ -18368,13 +19571,13 @@ exports.push([module.i, ".leaflet-cluster-anim .leaflet-marker-icon, .leaflet-cl
 
 
 /***/ }),
-/* 27 */
+/* 67 */
 /***/ (function(module, exports, __webpack_require__) {
 
 // style-loader: Adds some css to the DOM by adding a <style> tag
 
 // load the styles
-var content = __webpack_require__(28);
+var content = __webpack_require__(68);
 if(typeof content === 'string') content = [[module.i, content, '']];
 // Prepare cssTransformation
 var transform;
@@ -18382,7 +19585,7 @@ var transform;
 var options = {}
 options.transform = transform
 // add the styles to the DOM
-var update = __webpack_require__(3)(content, options);
+var update = __webpack_require__(18)(content, options);
 if(content.locals) module.exports = content.locals;
 // Hot Module Replacement
 if(false) {
@@ -18399,10 +19602,10 @@ if(false) {
 }
 
 /***/ }),
-/* 28 */
+/* 68 */
 /***/ (function(module, exports, __webpack_require__) {
 
-exports = module.exports = __webpack_require__(1)(false);
+exports = module.exports = __webpack_require__(10)(false);
 // imports
 
 
@@ -18413,7 +19616,7 @@ exports.push([module.i, ".marker-cluster-small {\r\n\tbackground-color: rgba(181
 
 
 /***/ }),
-/* 29 */
+/* 69 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -18446,6 +19649,7 @@ var debounce = function (fn, time) {
 };
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -18509,7 +19713,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -18523,7 +19727,7 @@ var findRealParent = function (firstVueParent) {
 
 
 /***/ }),
-/* 30 */
+/* 70 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -18569,22 +19773,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -18736,79 +19937,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -18836,7 +20002,7 @@ var Circle = {
 
 
 /***/ }),
-/* 31 */
+/* 71 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -18863,7 +20029,7 @@ var Control = {
 
 
 /***/ }),
-/* 32 */
+/* 72 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -18909,22 +20075,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -18987,7 +20150,7 @@ var GridLayer = {
 
 
 /***/ }),
-/* 33 */
+/* 73 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19033,22 +20196,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -19176,7 +20336,7 @@ var ImageOverlay = {
 
 
 /***/ }),
-/* 34 */
+/* 74 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19203,7 +20363,7 @@ var InteractiveLayer = {
 
 
 /***/ }),
-/* 35 */
+/* 75 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19249,22 +20409,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -19292,7 +20449,7 @@ var Layer = {
 
 
 /***/ }),
-/* 36 */
+/* 76 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19338,22 +20495,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -19402,7 +20556,7 @@ var LayerGroup = {
 
 
 /***/ }),
-/* 37 */
+/* 77 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19419,7 +20573,7 @@ var Options = {
 
 
 /***/ }),
-/* 38 */
+/* 78 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19465,22 +20619,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -19632,79 +20783,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -19713,7 +20829,7 @@ var Path = {
 
 
 /***/ }),
-/* 39 */
+/* 79 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -19759,22 +20875,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -19926,79 +21039,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -20028,17 +21106,11 @@ var Polyline = {
       noClip: this.noClip});
   },
   methods: {
-    setSmoothFactor: function setSmoothFactor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ smoothFactor: newVal });
-      }
+    setSmoothFactor: function setSmoothFactor (newVal) {
+      this.mapObject.setStyle({ smoothFactor: newVal });
     },
-    setNoClip: function setNoClip (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ noClip: newVal });
-      }
+    setNoClip: function setNoClip (newVal) {
+      this.mapObject.setStyle({ noClip: newVal });
     },
     addLatLng: function addLatLng (value) {
       this.mapObject.addLatLng(value);
@@ -20069,7 +21141,7 @@ var Polygon = {
 
 
 /***/ }),
-/* 40 */
+/* 80 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -20115,22 +21187,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -20282,79 +21351,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -20384,17 +21418,11 @@ var Polyline = {
       noClip: this.noClip});
   },
   methods: {
-    setSmoothFactor: function setSmoothFactor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ smoothFactor: newVal });
-      }
+    setSmoothFactor: function setSmoothFactor (newVal) {
+      this.mapObject.setStyle({ smoothFactor: newVal });
     },
-    setNoClip: function setNoClip (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ noClip: newVal });
-      }
+    setNoClip: function setNoClip (newVal) {
+      this.mapObject.setStyle({ noClip: newVal });
     },
     addLatLng: function addLatLng (value) {
       this.mapObject.addLatLng(value);
@@ -20406,7 +21434,7 @@ var Polyline = {
 
 
 /***/ }),
-/* 41 */
+/* 81 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -20440,7 +21468,7 @@ var Popper = {
 
 
 /***/ }),
-/* 42 */
+/* 82 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -20486,22 +21514,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -20586,7 +21611,7 @@ var TileLayer = {
 
 
 /***/ }),
-/* 43 */
+/* 83 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -20632,22 +21657,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -20775,7 +21797,7 @@ var TileLayerWMS = {
 
 
 /***/ }),
-/* 44 */
+/* 84 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -20784,6 +21806,7 @@ var TileLayerWMS = {
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -20847,7 +21870,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -20899,22 +21922,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -21066,79 +22086,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -21170,7 +22155,7 @@ var script = {
   props: {
     latLng: {
       type: [Object, Array],
-      default: function () { return []; }
+      default: function () { return [0, 0]; }
     }
   },
   data: function data () {
@@ -21316,7 +22301,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 45 */
+/* 85 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -21325,6 +22310,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -21388,7 +22374,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -21440,22 +22426,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -21607,79 +22590,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -21711,7 +22659,7 @@ var script = {
   props: {
     latLng: {
       type: [Object, Array],
-      default: function () { return []; }
+      default: function () { return [0, 0]; }
     },
     pane: {
       type: String,
@@ -21860,7 +22808,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 46 */
+/* 86 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -21869,6 +22817,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -21932,7 +22881,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -21975,6 +22924,13 @@ var Options = {
 var script = {
   name: 'LControl',
   mixins: [ControlMixin, Options],
+  props: {
+    disableClickPropagation: {
+      type: Boolean,
+      custom: true,
+      default: true
+    }
+  },
   mounted: function mounted () {
     var this$1 = this;
 
@@ -21992,6 +22948,9 @@ var script = {
     propsBinder(this, this.mapObject, this.$options.props);
     this.parentContainer = findRealParent(this.$parent);
     this.mapObject.setElement(this.$el);
+    if (this.disableClickPropagation) {
+      __WEBPACK_IMPORTED_MODULE_0_leaflet__["DomEvent"].disableClickPropagation(this.$el);
+    }
     this.mapObject.addTo(this.parentContainer.mapObject);
     this.$nextTick(function () {
       this$1.$emit('ready', this$1.mapObject);
@@ -22120,7 +23079,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 47 */
+/* 87 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -22129,6 +23088,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -22223,7 +23183,7 @@ var script = {
   mixins: [ControlMixin, Options],
   props: {
     prefix: {
-      type: String,
+      type: [String, Boolean],
       default: null
     }
   },
@@ -22363,7 +23323,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 48 */
+/* 88 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -22372,6 +23332,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -22638,7 +23599,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 49 */
+/* 89 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -22647,6 +23608,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -22896,7 +23858,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 50 */
+/* 90 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -22905,6 +23867,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -23154,7 +24117,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 51 */
+/* 91 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -23163,6 +24126,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -23198,7 +24162,7 @@ var propsBinder = function (vueElement, leafletElement, props, options) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -23250,22 +24214,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -23458,7 +24419,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 52 */
+/* 92 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -23467,6 +24428,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -23530,7 +24492,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -23582,22 +24544,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -23827,11 +24786,11 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 53 */
+/* 93 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue__ = __webpack_require__(54);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue__ = __webpack_require__(94);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_vue___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_vue__);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_leaflet__ = __webpack_require__(0);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_1_leaflet___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_1_leaflet__);
@@ -23839,6 +24798,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -23902,7 +24862,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -23954,22 +24914,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -24241,18 +25198,18 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 54 */
+/* 94 */
 /***/ (function(module, exports, __webpack_require__) {
 
 if (false) {
   module.exports = require('./vue.common.prod.js')
 } else {
-  module.exports = __webpack_require__(55)
+  module.exports = __webpack_require__(95)
 }
 
 
 /***/ }),
-/* 55 */
+/* 95 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -36195,10 +37152,10 @@ Vue.compile = compileToFunctions;
 
 module.exports = Vue;
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5), __webpack_require__(56).setImmediate))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(19), __webpack_require__(96).setImmediate))
 
 /***/ }),
-/* 56 */
+/* 96 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global) {var scope = (typeof global !== "undefined" && global) ||
@@ -36254,7 +37211,7 @@ exports._unrefActive = exports.active = function(item) {
 };
 
 // setimmediate attaches itself to the global object
-__webpack_require__(57);
+__webpack_require__(97);
 // On some exotic environments, it's not clear which object `setimmediate` was
 // able to install onto.  Search each possibility in the same order as the
 // `setimmediate` library.
@@ -36265,10 +37222,10 @@ exports.clearImmediate = (typeof self !== "undefined" && self.clearImmediate) ||
                          (typeof global !== "undefined" && global.clearImmediate) ||
                          (this && this.clearImmediate);
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(19)))
 
 /***/ }),
-/* 57 */
+/* 97 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(global, process) {(function (global, undefined) {
@@ -36458,10 +37415,10 @@ exports.clearImmediate = (typeof self !== "undefined" && self.clearImmediate) ||
     attachTo.clearImmediate = clearImmediate;
 }(typeof self === "undefined" ? typeof global === "undefined" ? this : global : self));
 
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5), __webpack_require__(58)))
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(19), __webpack_require__(98)))
 
 /***/ }),
-/* 58 */
+/* 98 */
 /***/ (function(module, exports) {
 
 // shim for using process in browser
@@ -36651,7 +37608,7 @@ process.umask = function() { return 0; };
 
 
 /***/ }),
-/* 59 */
+/* 99 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -36660,6 +37617,7 @@ process.umask = function() { return 0; };
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -36723,7 +37681,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -37063,7 +38021,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 60 */
+/* 100 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -37072,6 +38030,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -37247,7 +38206,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 61 */
+/* 101 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -37256,6 +38215,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -37319,7 +38279,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -37371,22 +38331,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -37650,7 +38607,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 62 */
+/* 102 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -37659,6 +38616,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -37694,7 +38652,7 @@ var propsBinder = function (vueElement, leafletElement, props, options) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -37746,22 +38704,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -37954,7 +38909,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 63 */
+/* 103 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -37981,6 +38936,7 @@ var debounce = function (fn, time) {
 };
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -38173,6 +39129,11 @@ var script = {
         }
       }
       return options;
+    }
+  },
+  beforeDestroy: function beforeDestroy () {
+    if (this.mapObject) {
+      this.mapObject.remove();
     }
   },
   mounted: function mounted () {
@@ -38447,7 +39408,7 @@ var __vue_staticRenderFns__ = [];
   /* style */
   var __vue_inject_styles__ = function (inject) {
     if (!inject) { return }
-    inject("data-v-09897586_0", { source: ".vue2leaflet-map{height:100%;width:100%}", map: undefined, media: undefined });
+    inject("data-v-2935624e_0", { source: ".vue2leaflet-map{height:100%;width:100%}", map: undefined, media: undefined });
 
   };
   /* scoped */
@@ -38475,7 +39436,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 64 */
+/* 104 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -38502,6 +39463,7 @@ var debounce = function (fn, time) {
 };
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -38565,7 +39527,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -38617,22 +39579,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -38738,6 +39697,7 @@ var script = {
     },
     latLngSync: function latLngSync (event) {
       this.$emit('update:latLng', event.latlng);
+      this.$emit('update:lat-lng', event.latlng);
     }
   },
   render: function (h) {
@@ -38867,7 +39827,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 65 */
+/* 105 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -38876,6 +39836,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -38939,7 +39900,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -38991,22 +39952,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -39158,79 +40116,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -39260,17 +40183,11 @@ var Polyline = {
       noClip: this.noClip});
   },
   methods: {
-    setSmoothFactor: function setSmoothFactor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ smoothFactor: newVal });
-      }
+    setSmoothFactor: function setSmoothFactor (newVal) {
+      this.mapObject.setStyle({ smoothFactor: newVal });
     },
-    setNoClip: function setNoClip (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ noClip: newVal });
-      }
+    setNoClip: function setNoClip (newVal) {
+      this.mapObject.setStyle({ noClip: newVal });
     },
     addLatLng: function addLatLng (value) {
       this.mapObject.addLatLng(value);
@@ -39450,7 +40367,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 66 */
+/* 106 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -39459,6 +40376,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -39522,7 +40440,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -39574,22 +40492,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -39741,79 +40656,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -39843,17 +40723,11 @@ var PolylineMixin = {
       noClip: this.noClip});
   },
   methods: {
-    setSmoothFactor: function setSmoothFactor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ smoothFactor: newVal });
-      }
+    setSmoothFactor: function setSmoothFactor (newVal) {
+      this.mapObject.setStyle({ smoothFactor: newVal });
     },
-    setNoClip: function setNoClip (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ noClip: newVal });
-      }
+    setNoClip: function setNoClip (newVal) {
+      this.mapObject.setStyle({ noClip: newVal });
     },
     addLatLng: function addLatLng (value) {
       this.mapObject.addLatLng(value);
@@ -40014,7 +40888,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 67 */
+/* 107 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -40023,6 +40897,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -40086,7 +40961,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -40159,7 +41034,11 @@ var script = {
   },
   beforeDestroy: function beforeDestroy () {
     if (this.parentContainer) {
-      this.parentContainer.unbindPopup();
+      if (this.parentContainer.unbindPopup) {
+        this.parentContainer.unbindPopup();
+      } else if (this.parentContainer.mapObject && this.parentContainer.mapObject.unbindPopup) {
+        this.parentContainer.mapObject.unbindPopup();
+      }
     }
   }
 };
@@ -40283,7 +41162,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 68 */
+/* 108 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -40292,6 +41171,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -40355,7 +41235,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -40407,22 +41287,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -40574,79 +41451,44 @@ var Path = {
     setLStyle: function setLStyle (newVal) {
       this.mapObject.setStyle(newVal);
     },
-    setStroke: function setStroke (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setStroke: function setStroke (newVal) {
       this.mapObject.setStyle({ stroke: newVal });
     },
-    setColor: function setColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ color: newVal });
-      }
+    setColor: function setColor (newVal) {
+      this.mapObject.setStyle({ color: newVal });
     },
-    setWeight: function setWeight (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ weight: newVal });
-      }
+    setWeight: function setWeight (newVal) {
+      this.mapObject.setStyle({ weight: newVal });
     },
-    setOpacity: function setOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal !== undefined && newVal !== null) {
-        this.mapObject.setStyle({ opacity: newVal });
-      }
+    setOpacity: function setOpacity (newVal) {
+      this.mapObject.setStyle({ opacity: newVal });
     },
-    setLineCap: function setLineCap (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineCap: newVal });
-      }
+    setLineCap: function setLineCap (newVal) {
+      this.mapObject.setStyle({ lineCap: newVal });
     },
-    setLineJoin: function setLineJoin (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ lineJoin: newVal });
-      }
+    setLineJoin: function setLineJoin (newVal) {
+      this.mapObject.setStyle({ lineJoin: newVal });
     },
-    setDashArray: function setDashArray (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashArray: newVal });
-      }
+    setDashArray: function setDashArray (newVal) {
+      this.mapObject.setStyle({ dashArray: newVal });
     },
-    setDashOffset: function setDashOffset (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ dashOffset: newVal });
-      }
+    setDashOffset: function setDashOffset (newVal) {
+      this.mapObject.setStyle({ dashOffset: newVal });
     },
-    setFill: function setFill (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setFill: function setFill (newVal) {
       this.mapObject.setStyle({ fill: newVal });
     },
-    setFillColor: function setFillColor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillColor: newVal });
-      }
+    setFillColor: function setFillColor (newVal) {
+      this.mapObject.setStyle({ fillColor: newVal });
     },
-    setFillOpacity: function setFillOpacity (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillOpacity: newVal });
-      }
+    setFillOpacity: function setFillOpacity (newVal) {
+      this.mapObject.setStyle({ fillOpacity: newVal });
     },
-    setFillRule: function setFillRule (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ fillRule: newVal });
-      }
+    setFillRule: function setFillRule (newVal) {
+      this.mapObject.setStyle({ fillRule: newVal });
     },
-    setClassName: function setClassName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ className: newVal });
-      }
+    setClassName: function setClassName (newVal) {
+      this.mapObject.setStyle({ className: newVal });
     }
   }
 };
@@ -40676,17 +41518,11 @@ var Polyline = {
       noClip: this.noClip});
   },
   methods: {
-    setSmoothFactor: function setSmoothFactor (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ smoothFactor: newVal });
-      }
+    setSmoothFactor: function setSmoothFactor (newVal) {
+      this.mapObject.setStyle({ smoothFactor: newVal });
     },
-    setNoClip: function setNoClip (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
-      if (newVal) {
-        this.mapObject.setStyle({ noClip: newVal });
-      }
+    setNoClip: function setNoClip (newVal) {
+      this.mapObject.setStyle({ noClip: newVal });
     },
     addLatLng: function addLatLng (value) {
       this.mapObject.addLatLng(value);
@@ -40866,7 +41702,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 69 */
+/* 109 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -40875,6 +41711,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -40938,7 +41775,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -40990,22 +41827,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -41246,7 +42080,7 @@ var __vue_staticRenderFns__ = [];
 
 
 /***/ }),
-/* 70 */
+/* 110 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -41255,6 +42089,7 @@ var __vue_staticRenderFns__ = [];
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -41318,7 +42153,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -41382,7 +42217,11 @@ var script = {
   },
   beforeDestroy: function beforeDestroy () {
     if (this.parentContainer) {
-      this.parentContainer.unbindTooltip();
+      if (this.parentContainer.unbindTooltip) {
+        this.parentContainer.unbindTooltip();
+      } else if (this.parentContainer.mapObject && this.parentContainer.mapObject.unbindTooltip) {
+        this.parentContainer.mapObject.unbindTooltip();
+      }
     }
   }
 };
@@ -41506,7 +42345,7 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 71 */
+/* 111 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -41515,6 +42354,7 @@ var __vue_script__ = script;
 
 
 var capitalizeFirstLetter = function (string) {
+  if (!string || typeof string.charAt !== 'function') { return string; }
   return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
@@ -41578,7 +42418,7 @@ var optionsMerger = function (props, instance) {
 
 var findRealParent = function (firstVueParent) {
   var found = false;
-  while (!found) {
+  while (firstVueParent && !found) {
     if (firstVueParent.mapObject === undefined) {
       firstVueParent = firstVueParent.$parent;
     } else {
@@ -41630,22 +42470,19 @@ var Layer = {
       var attributionControl = this.$parent.mapObject.attributionControl;
       attributionControl.removeAttribution(old).addAttribution(val);
     },
-    setName: function setName (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setName: function setName () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setLayerType: function setLayerType (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setLayerType: function setLayerType () {
       this.parentContainer.removeLayer(this);
       if (this.visible) {
         this.parentContainer.addLayer(this);
       }
     },
-    setVisible: function setVisible (newVal, oldVal) {
-      if (newVal === oldVal) { return; }
+    setVisible: function setVisible (newVal) {
       if (this.mapObject) {
         if (newVal) {
           this.parentContainer.addLayer(this);
@@ -41921,14 +42758,761 @@ var __vue_script__ = script;
 
 
 /***/ }),
-/* 72 */
+/* 112 */
 /***/ (function(module, exports, __webpack_require__) {
 
-(function(e,t){ true?module.exports=t(__webpack_require__(0),__webpack_require__(6),__webpack_require__(4)):"function"==typeof define&&define.amd?define(["leaflet","leaflet.markercluster","vue2-leaflet"],t):"object"==typeof exports?exports.Vue2LeafletMarkercluster=t(require("leaflet"),require("leaflet.markercluster"),require("vue2-leaflet")):e.Vue2LeafletMarkercluster=t(e.leaflet,e["leaflet.markercluster"],e["vue2-leaflet"])})(this,function(e,t,r){return function(e){function t(n){if(r[n])return r[n].exports;var o=r[n]={i:n,l:!1,exports:{}};return e[n].call(o.exports,o,o.exports,t),o.l=!0,o.exports}var r={};return t.m=e,t.c=r,t.i=function(e){return e},t.d=function(e,r,n){t.o(e,r)||Object.defineProperty(e,r,{configurable:!1,enumerable:!0,get:n})},t.n=function(e){var r=e&&e.__esModule?function(){return e.default}:function(){return e};return t.d(r,"a",r),r},t.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},t.p="/",t(t.s=7)}([function(e,t,r){var n=r(2)(r(1),r(3),null,null);e.exports=n.exports},function(e,t,r){"use strict";Object.defineProperty(t,"__esModule",{value:!0});var n=r(5),o=r(6),u=r(4),a={options:{type:Object,default:function(){return{}}}};t.default={props:a,data:function(){return{ready:!1}},mounted:function(){this.mapObject=new n.MarkerClusterGroup(this.options),u.DomEvent.on(this.mapObject,this.$listeners),(0,o.propsBinder)(this,this.mapObject,a),this.ready=!0,this.parentContainer=(0,o.findRealParent)(this.$parent),this.parentContainer.addLayer(this)},beforeDestroy:function(){this.parentContainer.removeLayer(this)},methods:{addLayer:function(e,t){t||this.mapObject.addLayer(e.mapObject)},removeLayer:function(e,t){t||this.mapObject.removeLayer(e.mapObject)}}}},function(e,t){e.exports=function(e,t,r,n){var o,u=e=e||{},a=typeof e.default;"object"!==a&&"function"!==a||(o=e,u=e.default);var i="function"==typeof u?u.options:u;if(t&&(i.render=t.render,i.staticRenderFns=t.staticRenderFns),r&&(i._scopeId=r),n){var f=i.computed||(i.computed={});Object.keys(n).forEach(function(e){var t=n[e];f[e]=function(){return t}})}return{esModule:o,exports:u,options:i}}},function(e,t){e.exports={render:function(){var e=this,t=e.$createElement;return(e._self._c||t)("div",{staticStyle:{display:"none"}},[e.ready?e._t("default"):e._e()],2)},staticRenderFns:[]}},function(e,t){e.exports=__webpack_require__(0)},function(e,t){e.exports=__webpack_require__(6)},function(e,t){e.exports=__webpack_require__(4)},function(e,t,r){e.exports=r(0)}])});
+(function(e,t){ true?module.exports=t(__webpack_require__(0),__webpack_require__(33),__webpack_require__(8)):"function"==typeof define&&define.amd?define(["leaflet","leaflet.markercluster","vue2-leaflet"],t):"object"==typeof exports?exports.Vue2LeafletMarkercluster=t(require("leaflet"),require("leaflet.markercluster"),require("vue2-leaflet")):e.Vue2LeafletMarkercluster=t(e.leaflet,e["leaflet.markercluster"],e["vue2-leaflet"])})(this,function(e,t,r){return function(e){function t(n){if(r[n])return r[n].exports;var o=r[n]={i:n,l:!1,exports:{}};return e[n].call(o.exports,o,o.exports,t),o.l=!0,o.exports}var r={};return t.m=e,t.c=r,t.i=function(e){return e},t.d=function(e,r,n){t.o(e,r)||Object.defineProperty(e,r,{configurable:!1,enumerable:!0,get:n})},t.n=function(e){var r=e&&e.__esModule?function(){return e.default}:function(){return e};return t.d(r,"a",r),r},t.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},t.p="/",t(t.s=7)}([function(e,t,r){var n=r(2)(r(1),r(3),null,null);e.exports=n.exports},function(e,t,r){"use strict";Object.defineProperty(t,"__esModule",{value:!0});var n=r(5),o=r(6),u=r(4),a={options:{type:Object,default:function(){return{}}}};t.default={props:a,data:function(){return{ready:!1}},mounted:function(){this.mapObject=new n.MarkerClusterGroup(this.options),u.DomEvent.on(this.mapObject,this.$listeners),(0,o.propsBinder)(this,this.mapObject,a),this.ready=!0,this.parentContainer=(0,o.findRealParent)(this.$parent),this.parentContainer.addLayer(this)},beforeDestroy:function(){this.parentContainer.removeLayer(this)},methods:{addLayer:function(e,t){t||this.mapObject.addLayer(e.mapObject)},removeLayer:function(e,t){t||this.mapObject.removeLayer(e.mapObject)}}}},function(e,t){e.exports=function(e,t,r,n){var o,u=e=e||{},a=typeof e.default;"object"!==a&&"function"!==a||(o=e,u=e.default);var i="function"==typeof u?u.options:u;if(t&&(i.render=t.render,i.staticRenderFns=t.staticRenderFns),r&&(i._scopeId=r),n){var f=i.computed||(i.computed={});Object.keys(n).forEach(function(e){var t=n[e];f[e]=function(){return t}})}return{esModule:o,exports:u,options:i}}},function(e,t){e.exports={render:function(){var e=this,t=e.$createElement;return(e._self._c||t)("div",{staticStyle:{display:"none"}},[e.ready?e._t("default"):e._e()],2)},staticRenderFns:[]}},function(e,t){e.exports=__webpack_require__(0)},function(e,t){e.exports=__webpack_require__(33)},function(e,t){e.exports=__webpack_require__(8)},function(e,t,r){e.exports=r(0)}])});
 //# sourceMappingURL=Vue2LeafletMarkercluster.js.map
 
 /***/ }),
-/* 73 */
+/* 113 */
+/***/ (function(module, exports, __webpack_require__) {
+
+(function(e,t){ true?module.exports=t(__webpack_require__(34),__webpack_require__(0),__webpack_require__(46),__webpack_require__(8)):"function"==typeof define&&define.amd?define(["babel-runtime/helpers/typeof","leaflet","leaflet.gridlayer.googlemutant","vue2-leaflet"],t):"object"==typeof exports?exports.Vue2LeafletGoogleMutant=t(require("babel-runtime/helpers/typeof"),require("leaflet"),require("leaflet.gridlayer.googlemutant"),require("vue2-leaflet")):e.Vue2LeafletGoogleMutant=t(e["babel-runtime/helpers/typeof"],e.leaflet,e["leaflet.gridlayer.googlemutant"],e["vue2-leaflet"])})(this,function(e,t,r,n){return function(e){function t(n){if(r[n])return r[n].exports;var o=r[n]={i:n,l:!1,exports:{}};return e[n].call(o.exports,o,o.exports,t),o.l=!0,o.exports}var r={};return t.m=e,t.c=r,t.i=function(e){return e},t.d=function(e,r,n){t.o(e,r)||Object.defineProperty(e,r,{configurable:!1,enumerable:!0,get:n})},t.n=function(e){var r=e&&e.__esModule?function(){return e.default}:function(){return e};return t.d(r,"a",r),r},t.o=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},t.p="/",t(t.s=8)}([function(e,t,r){var n=r(2)(r(1),r(3),null,null);e.exports=n.exports},function(e,t,r){"use strict";function n(e){return e&&e.__esModule?e:{default:e}}Object.defineProperty(t,"__esModule",{value:!0});var o=r(4),i=n(o),a=r(5),u=n(a);r(6);var l=r(7),f={options:{type:Object,default:function(){return{}}},apikey:{type:String,default:function(){return""}},lang:{type:String,default:null},region:{type:String,default:null},name:{type:String,default:""},layerType:{type:String,default:"base"},visible:{type:Boolean,default:!0}};t.default={props:f,data:function(){return{ready:!1}},mounted:function(){if(this.mapObject=u.default.gridLayer.googleMutant(this.options),u.default.DomEvent.on(this.mapObject,this.$listeners),(0,l.propsBinder)(this,this.mapObject,f),"object"!==("undefined"==typeof google?"undefined":(0,i.default)(google))||"object"!==(0,i.default)(google.maps)){var e=document.createElement("script"),t="https://maps.googleapis.com/maps/api/js?key="+this.apikey;t+=this.lang?"&language="+this.lang:"",t+=this.region?"&region="+this.region:"",e.setAttribute("src",t),document.head.appendChild(e)}this.ready=!0,this.parentContainer=(0,l.findRealParent)(this.$parent),this.parentContainer.addLayer(this,!this.visible)},beforeDestroy:function(){this.parentContainer.removeLayer(this)},methods:{addLayer:function(e,t){t||this.mapObject.addLayer(e.mapObject)},removeLayer:function(e,t){t||this.mapObject.removeLayer(e.mapObject)}}}},function(e,t){e.exports=function(e,t,r,n){var o,i=e=e||{},a=typeof e.default;"object"!==a&&"function"!==a||(o=e,i=e.default);var u="function"==typeof i?i.options:i;if(t&&(u.render=t.render,u.staticRenderFns=t.staticRenderFns),r&&(u._scopeId=r),n){var l=u.computed||(u.computed={});Object.keys(n).forEach(function(e){var t=n[e];l[e]=function(){return t}})}return{esModule:o,exports:i,options:u}}},function(e,t){e.exports={render:function(){var e=this,t=e.$createElement;return(e._self._c||t)("div",{staticStyle:{display:"none"}},[e.ready?e._t("default"):e._e()],2)},staticRenderFns:[]}},function(e,t){e.exports=__webpack_require__(34)},function(e,t){e.exports=__webpack_require__(0)},function(e,t){e.exports=__webpack_require__(46)},function(e,t){e.exports=__webpack_require__(8)},function(e,t,r){e.exports=r(0)}])});
+//# sourceMappingURL=Vue2LeafletGoogleMutant.js.map
+
+/***/ }),
+/* 114 */
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = { "default": __webpack_require__(115), __esModule: true };
+
+/***/ }),
+/* 115 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(116);
+__webpack_require__(128);
+module.exports = __webpack_require__(29).f('iterator');
+
+
+/***/ }),
+/* 116 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var $at = __webpack_require__(117)(true);
+
+// 21.1.3.27 String.prototype[@@iterator]()
+__webpack_require__(35)(String, 'String', function (iterated) {
+  this._t = String(iterated); // target
+  this._i = 0;                // next index
+// 21.1.5.2.1 %StringIteratorPrototype%.next()
+}, function () {
+  var O = this._t;
+  var index = this._i;
+  var point;
+  if (index >= O.length) return { value: undefined, done: true };
+  point = $at(O, index);
+  this._i += point.length;
+  return { value: point, done: false };
+});
+
+
+/***/ }),
+/* 117 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var toInteger = __webpack_require__(20);
+var defined = __webpack_require__(21);
+// true  -> String#at
+// false -> String#codePointAt
+module.exports = function (TO_STRING) {
+  return function (that, pos) {
+    var s = String(defined(that));
+    var i = toInteger(pos);
+    var l = s.length;
+    var a, b;
+    if (i < 0 || i >= l) return TO_STRING ? '' : undefined;
+    a = s.charCodeAt(i);
+    return a < 0xd800 || a > 0xdbff || i + 1 === l || (b = s.charCodeAt(i + 1)) < 0xdc00 || b > 0xdfff
+      ? TO_STRING ? s.charAt(i) : a
+      : TO_STRING ? s.slice(i, i + 2) : (a - 0xd800 << 10) + (b - 0xdc00) + 0x10000;
+  };
+};
+
+
+/***/ }),
+/* 118 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// optional / simple context binding
+var aFunction = __webpack_require__(119);
+module.exports = function (fn, that, length) {
+  aFunction(fn);
+  if (that === undefined) return fn;
+  switch (length) {
+    case 1: return function (a) {
+      return fn.call(that, a);
+    };
+    case 2: return function (a, b) {
+      return fn.call(that, a, b);
+    };
+    case 3: return function (a, b, c) {
+      return fn.call(that, a, b, c);
+    };
+  }
+  return function (/* ...args */) {
+    return fn.apply(that, arguments);
+  };
+};
+
+
+/***/ }),
+/* 119 */
+/***/ (function(module, exports) {
+
+module.exports = function (it) {
+  if (typeof it != 'function') throw TypeError(it + ' is not a function!');
+  return it;
+};
+
+
+/***/ }),
+/* 120 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var create = __webpack_require__(40);
+var descriptor = __webpack_require__(15);
+var setToStringTag = __webpack_require__(28);
+var IteratorPrototype = {};
+
+// 25.1.2.1.1 %IteratorPrototype%[@@iterator]()
+__webpack_require__(3)(IteratorPrototype, __webpack_require__(7)('iterator'), function () { return this; });
+
+module.exports = function (Constructor, NAME, next) {
+  Constructor.prototype = create(IteratorPrototype, { next: descriptor(1, next) });
+  setToStringTag(Constructor, NAME + ' Iterator');
+};
+
+
+/***/ }),
+/* 121 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var dP = __webpack_require__(4);
+var anObject = __webpack_require__(13);
+var getKeys = __webpack_require__(24);
+
+module.exports = __webpack_require__(5) ? Object.defineProperties : function defineProperties(O, Properties) {
+  anObject(O);
+  var keys = getKeys(Properties);
+  var length = keys.length;
+  var i = 0;
+  var P;
+  while (length > i) dP.f(O, P = keys[i++], Properties[P]);
+  return O;
+};
+
+
+/***/ }),
+/* 122 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// fallback for non-array-like ES3 and non-enumerable old V8 strings
+var cof = __webpack_require__(42);
+// eslint-disable-next-line no-prototype-builtins
+module.exports = Object('z').propertyIsEnumerable(0) ? Object : function (it) {
+  return cof(it) == 'String' ? it.split('') : Object(it);
+};
+
+
+/***/ }),
+/* 123 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// false -> Array#indexOf
+// true  -> Array#includes
+var toIObject = __webpack_require__(6);
+var toLength = __webpack_require__(124);
+var toAbsoluteIndex = __webpack_require__(125);
+module.exports = function (IS_INCLUDES) {
+  return function ($this, el, fromIndex) {
+    var O = toIObject($this);
+    var length = toLength(O.length);
+    var index = toAbsoluteIndex(fromIndex, length);
+    var value;
+    // Array#includes uses SameValueZero equality algorithm
+    // eslint-disable-next-line no-self-compare
+    if (IS_INCLUDES && el != el) while (length > index) {
+      value = O[index++];
+      // eslint-disable-next-line no-self-compare
+      if (value != value) return true;
+    // Array#indexOf ignores holes, Array#includes - not
+    } else for (;length > index; index++) if (IS_INCLUDES || index in O) {
+      if (O[index] === el) return IS_INCLUDES || index || 0;
+    } return !IS_INCLUDES && -1;
+  };
+};
+
+
+/***/ }),
+/* 124 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 7.1.15 ToLength
+var toInteger = __webpack_require__(20);
+var min = Math.min;
+module.exports = function (it) {
+  return it > 0 ? min(toInteger(it), 0x1fffffffffffff) : 0; // pow(2, 53) - 1 == 9007199254740991
+};
+
+
+/***/ }),
+/* 125 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var toInteger = __webpack_require__(20);
+var max = Math.max;
+var min = Math.min;
+module.exports = function (index, length) {
+  index = toInteger(index);
+  return index < 0 ? max(index + length, 0) : min(index, length);
+};
+
+
+/***/ }),
+/* 126 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var document = __webpack_require__(1).document;
+module.exports = document && document.documentElement;
+
+
+/***/ }),
+/* 127 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 19.1.2.9 / 15.2.3.2 Object.getPrototypeOf(O)
+var has = __webpack_require__(2);
+var toObject = __webpack_require__(43);
+var IE_PROTO = __webpack_require__(25)('IE_PROTO');
+var ObjectProto = Object.prototype;
+
+module.exports = Object.getPrototypeOf || function (O) {
+  O = toObject(O);
+  if (has(O, IE_PROTO)) return O[IE_PROTO];
+  if (typeof O.constructor == 'function' && O instanceof O.constructor) {
+    return O.constructor.prototype;
+  } return O instanceof Object ? ObjectProto : null;
+};
+
+
+/***/ }),
+/* 128 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(129);
+var global = __webpack_require__(1);
+var hide = __webpack_require__(3);
+var Iterators = __webpack_require__(23);
+var TO_STRING_TAG = __webpack_require__(7)('toStringTag');
+
+var DOMIterables = ('CSSRuleList,CSSStyleDeclaration,CSSValueList,ClientRectList,DOMRectList,DOMStringList,' +
+  'DOMTokenList,DataTransferItemList,FileList,HTMLAllCollection,HTMLCollection,HTMLFormElement,HTMLSelectElement,' +
+  'MediaList,MimeTypeArray,NamedNodeMap,NodeList,PaintRequestList,Plugin,PluginArray,SVGLengthList,SVGNumberList,' +
+  'SVGPathSegList,SVGPointList,SVGStringList,SVGTransformList,SourceBufferList,StyleSheetList,TextTrackCueList,' +
+  'TextTrackList,TouchList').split(',');
+
+for (var i = 0; i < DOMIterables.length; i++) {
+  var NAME = DOMIterables[i];
+  var Collection = global[NAME];
+  var proto = Collection && Collection.prototype;
+  if (proto && !proto[TO_STRING_TAG]) hide(proto, TO_STRING_TAG, NAME);
+  Iterators[NAME] = Iterators.Array;
+}
+
+
+/***/ }),
+/* 129 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var addToUnscopables = __webpack_require__(130);
+var step = __webpack_require__(131);
+var Iterators = __webpack_require__(23);
+var toIObject = __webpack_require__(6);
+
+// 22.1.3.4 Array.prototype.entries()
+// 22.1.3.13 Array.prototype.keys()
+// 22.1.3.29 Array.prototype.values()
+// 22.1.3.30 Array.prototype[@@iterator]()
+module.exports = __webpack_require__(35)(Array, 'Array', function (iterated, kind) {
+  this._t = toIObject(iterated); // target
+  this._i = 0;                   // next index
+  this._k = kind;                // kind
+// 22.1.5.2.1 %ArrayIteratorPrototype%.next()
+}, function () {
+  var O = this._t;
+  var kind = this._k;
+  var index = this._i++;
+  if (!O || index >= O.length) {
+    this._t = undefined;
+    return step(1);
+  }
+  if (kind == 'keys') return step(0, index);
+  if (kind == 'values') return step(0, O[index]);
+  return step(0, [index, O[index]]);
+}, 'values');
+
+// argumentsList[@@iterator] is %ArrayProto_values% (9.4.4.6, 9.4.4.7)
+Iterators.Arguments = Iterators.Array;
+
+addToUnscopables('keys');
+addToUnscopables('values');
+addToUnscopables('entries');
+
+
+/***/ }),
+/* 130 */
+/***/ (function(module, exports) {
+
+module.exports = function () { /* empty */ };
+
+
+/***/ }),
+/* 131 */
+/***/ (function(module, exports) {
+
+module.exports = function (done, value) {
+  return { value: value, done: !!done };
+};
+
+
+/***/ }),
+/* 132 */
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = { "default": __webpack_require__(133), __esModule: true };
+
+/***/ }),
+/* 133 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(134);
+__webpack_require__(140);
+__webpack_require__(141);
+__webpack_require__(142);
+module.exports = __webpack_require__(12).Symbol;
+
+
+/***/ }),
+/* 134 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+// ECMAScript 6 symbols shim
+var global = __webpack_require__(1);
+var has = __webpack_require__(2);
+var DESCRIPTORS = __webpack_require__(5);
+var $export = __webpack_require__(36);
+var redefine = __webpack_require__(39);
+var META = __webpack_require__(135).KEY;
+var $fails = __webpack_require__(14);
+var shared = __webpack_require__(26);
+var setToStringTag = __webpack_require__(28);
+var uid = __webpack_require__(16);
+var wks = __webpack_require__(7);
+var wksExt = __webpack_require__(29);
+var wksDefine = __webpack_require__(30);
+var enumKeys = __webpack_require__(136);
+var isArray = __webpack_require__(137);
+var anObject = __webpack_require__(13);
+var isObject = __webpack_require__(9);
+var toObject = __webpack_require__(43);
+var toIObject = __webpack_require__(6);
+var toPrimitive = __webpack_require__(22);
+var createDesc = __webpack_require__(15);
+var _create = __webpack_require__(40);
+var gOPNExt = __webpack_require__(138);
+var $GOPD = __webpack_require__(139);
+var $GOPS = __webpack_require__(44);
+var $DP = __webpack_require__(4);
+var $keys = __webpack_require__(24);
+var gOPD = $GOPD.f;
+var dP = $DP.f;
+var gOPN = gOPNExt.f;
+var $Symbol = global.Symbol;
+var $JSON = global.JSON;
+var _stringify = $JSON && $JSON.stringify;
+var PROTOTYPE = 'prototype';
+var HIDDEN = wks('_hidden');
+var TO_PRIMITIVE = wks('toPrimitive');
+var isEnum = {}.propertyIsEnumerable;
+var SymbolRegistry = shared('symbol-registry');
+var AllSymbols = shared('symbols');
+var OPSymbols = shared('op-symbols');
+var ObjectProto = Object[PROTOTYPE];
+var USE_NATIVE = typeof $Symbol == 'function' && !!$GOPS.f;
+var QObject = global.QObject;
+// Don't use setters in Qt Script, https://github.com/zloirock/core-js/issues/173
+var setter = !QObject || !QObject[PROTOTYPE] || !QObject[PROTOTYPE].findChild;
+
+// fallback for old Android, https://code.google.com/p/v8/issues/detail?id=687
+var setSymbolDesc = DESCRIPTORS && $fails(function () {
+  return _create(dP({}, 'a', {
+    get: function () { return dP(this, 'a', { value: 7 }).a; }
+  })).a != 7;
+}) ? function (it, key, D) {
+  var protoDesc = gOPD(ObjectProto, key);
+  if (protoDesc) delete ObjectProto[key];
+  dP(it, key, D);
+  if (protoDesc && it !== ObjectProto) dP(ObjectProto, key, protoDesc);
+} : dP;
+
+var wrap = function (tag) {
+  var sym = AllSymbols[tag] = _create($Symbol[PROTOTYPE]);
+  sym._k = tag;
+  return sym;
+};
+
+var isSymbol = USE_NATIVE && typeof $Symbol.iterator == 'symbol' ? function (it) {
+  return typeof it == 'symbol';
+} : function (it) {
+  return it instanceof $Symbol;
+};
+
+var $defineProperty = function defineProperty(it, key, D) {
+  if (it === ObjectProto) $defineProperty(OPSymbols, key, D);
+  anObject(it);
+  key = toPrimitive(key, true);
+  anObject(D);
+  if (has(AllSymbols, key)) {
+    if (!D.enumerable) {
+      if (!has(it, HIDDEN)) dP(it, HIDDEN, createDesc(1, {}));
+      it[HIDDEN][key] = true;
+    } else {
+      if (has(it, HIDDEN) && it[HIDDEN][key]) it[HIDDEN][key] = false;
+      D = _create(D, { enumerable: createDesc(0, false) });
+    } return setSymbolDesc(it, key, D);
+  } return dP(it, key, D);
+};
+var $defineProperties = function defineProperties(it, P) {
+  anObject(it);
+  var keys = enumKeys(P = toIObject(P));
+  var i = 0;
+  var l = keys.length;
+  var key;
+  while (l > i) $defineProperty(it, key = keys[i++], P[key]);
+  return it;
+};
+var $create = function create(it, P) {
+  return P === undefined ? _create(it) : $defineProperties(_create(it), P);
+};
+var $propertyIsEnumerable = function propertyIsEnumerable(key) {
+  var E = isEnum.call(this, key = toPrimitive(key, true));
+  if (this === ObjectProto && has(AllSymbols, key) && !has(OPSymbols, key)) return false;
+  return E || !has(this, key) || !has(AllSymbols, key) || has(this, HIDDEN) && this[HIDDEN][key] ? E : true;
+};
+var $getOwnPropertyDescriptor = function getOwnPropertyDescriptor(it, key) {
+  it = toIObject(it);
+  key = toPrimitive(key, true);
+  if (it === ObjectProto && has(AllSymbols, key) && !has(OPSymbols, key)) return;
+  var D = gOPD(it, key);
+  if (D && has(AllSymbols, key) && !(has(it, HIDDEN) && it[HIDDEN][key])) D.enumerable = true;
+  return D;
+};
+var $getOwnPropertyNames = function getOwnPropertyNames(it) {
+  var names = gOPN(toIObject(it));
+  var result = [];
+  var i = 0;
+  var key;
+  while (names.length > i) {
+    if (!has(AllSymbols, key = names[i++]) && key != HIDDEN && key != META) result.push(key);
+  } return result;
+};
+var $getOwnPropertySymbols = function getOwnPropertySymbols(it) {
+  var IS_OP = it === ObjectProto;
+  var names = gOPN(IS_OP ? OPSymbols : toIObject(it));
+  var result = [];
+  var i = 0;
+  var key;
+  while (names.length > i) {
+    if (has(AllSymbols, key = names[i++]) && (IS_OP ? has(ObjectProto, key) : true)) result.push(AllSymbols[key]);
+  } return result;
+};
+
+// 19.4.1.1 Symbol([description])
+if (!USE_NATIVE) {
+  $Symbol = function Symbol() {
+    if (this instanceof $Symbol) throw TypeError('Symbol is not a constructor!');
+    var tag = uid(arguments.length > 0 ? arguments[0] : undefined);
+    var $set = function (value) {
+      if (this === ObjectProto) $set.call(OPSymbols, value);
+      if (has(this, HIDDEN) && has(this[HIDDEN], tag)) this[HIDDEN][tag] = false;
+      setSymbolDesc(this, tag, createDesc(1, value));
+    };
+    if (DESCRIPTORS && setter) setSymbolDesc(ObjectProto, tag, { configurable: true, set: $set });
+    return wrap(tag);
+  };
+  redefine($Symbol[PROTOTYPE], 'toString', function toString() {
+    return this._k;
+  });
+
+  $GOPD.f = $getOwnPropertyDescriptor;
+  $DP.f = $defineProperty;
+  __webpack_require__(45).f = gOPNExt.f = $getOwnPropertyNames;
+  __webpack_require__(31).f = $propertyIsEnumerable;
+  $GOPS.f = $getOwnPropertySymbols;
+
+  if (DESCRIPTORS && !__webpack_require__(11)) {
+    redefine(ObjectProto, 'propertyIsEnumerable', $propertyIsEnumerable, true);
+  }
+
+  wksExt.f = function (name) {
+    return wrap(wks(name));
+  };
+}
+
+$export($export.G + $export.W + $export.F * !USE_NATIVE, { Symbol: $Symbol });
+
+for (var es6Symbols = (
+  // 19.4.2.2, 19.4.2.3, 19.4.2.4, 19.4.2.6, 19.4.2.8, 19.4.2.9, 19.4.2.10, 19.4.2.11, 19.4.2.12, 19.4.2.13, 19.4.2.14
+  'hasInstance,isConcatSpreadable,iterator,match,replace,search,species,split,toPrimitive,toStringTag,unscopables'
+).split(','), j = 0; es6Symbols.length > j;)wks(es6Symbols[j++]);
+
+for (var wellKnownSymbols = $keys(wks.store), k = 0; wellKnownSymbols.length > k;) wksDefine(wellKnownSymbols[k++]);
+
+$export($export.S + $export.F * !USE_NATIVE, 'Symbol', {
+  // 19.4.2.1 Symbol.for(key)
+  'for': function (key) {
+    return has(SymbolRegistry, key += '')
+      ? SymbolRegistry[key]
+      : SymbolRegistry[key] = $Symbol(key);
+  },
+  // 19.4.2.5 Symbol.keyFor(sym)
+  keyFor: function keyFor(sym) {
+    if (!isSymbol(sym)) throw TypeError(sym + ' is not a symbol!');
+    for (var key in SymbolRegistry) if (SymbolRegistry[key] === sym) return key;
+  },
+  useSetter: function () { setter = true; },
+  useSimple: function () { setter = false; }
+});
+
+$export($export.S + $export.F * !USE_NATIVE, 'Object', {
+  // 19.1.2.2 Object.create(O [, Properties])
+  create: $create,
+  // 19.1.2.4 Object.defineProperty(O, P, Attributes)
+  defineProperty: $defineProperty,
+  // 19.1.2.3 Object.defineProperties(O, Properties)
+  defineProperties: $defineProperties,
+  // 19.1.2.6 Object.getOwnPropertyDescriptor(O, P)
+  getOwnPropertyDescriptor: $getOwnPropertyDescriptor,
+  // 19.1.2.7 Object.getOwnPropertyNames(O)
+  getOwnPropertyNames: $getOwnPropertyNames,
+  // 19.1.2.8 Object.getOwnPropertySymbols(O)
+  getOwnPropertySymbols: $getOwnPropertySymbols
+});
+
+// Chrome 38 and 39 `Object.getOwnPropertySymbols` fails on primitives
+// https://bugs.chromium.org/p/v8/issues/detail?id=3443
+var FAILS_ON_PRIMITIVES = $fails(function () { $GOPS.f(1); });
+
+$export($export.S + $export.F * FAILS_ON_PRIMITIVES, 'Object', {
+  getOwnPropertySymbols: function getOwnPropertySymbols(it) {
+    return $GOPS.f(toObject(it));
+  }
+});
+
+// 24.3.2 JSON.stringify(value [, replacer [, space]])
+$JSON && $export($export.S + $export.F * (!USE_NATIVE || $fails(function () {
+  var S = $Symbol();
+  // MS Edge converts symbol values to JSON as {}
+  // WebKit converts symbol values to JSON as null
+  // V8 throws on boxed symbols
+  return _stringify([S]) != '[null]' || _stringify({ a: S }) != '{}' || _stringify(Object(S)) != '{}';
+})), 'JSON', {
+  stringify: function stringify(it) {
+    var args = [it];
+    var i = 1;
+    var replacer, $replacer;
+    while (arguments.length > i) args.push(arguments[i++]);
+    $replacer = replacer = args[1];
+    if (!isObject(replacer) && it === undefined || isSymbol(it)) return; // IE8 returns string on undefined
+    if (!isArray(replacer)) replacer = function (key, value) {
+      if (typeof $replacer == 'function') value = $replacer.call(this, key, value);
+      if (!isSymbol(value)) return value;
+    };
+    args[1] = replacer;
+    return _stringify.apply($JSON, args);
+  }
+});
+
+// 19.4.3.4 Symbol.prototype[@@toPrimitive](hint)
+$Symbol[PROTOTYPE][TO_PRIMITIVE] || __webpack_require__(3)($Symbol[PROTOTYPE], TO_PRIMITIVE, $Symbol[PROTOTYPE].valueOf);
+// 19.4.3.5 Symbol.prototype[@@toStringTag]
+setToStringTag($Symbol, 'Symbol');
+// 20.2.1.9 Math[@@toStringTag]
+setToStringTag(Math, 'Math', true);
+// 24.3.3 JSON[@@toStringTag]
+setToStringTag(global.JSON, 'JSON', true);
+
+
+/***/ }),
+/* 135 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var META = __webpack_require__(16)('meta');
+var isObject = __webpack_require__(9);
+var has = __webpack_require__(2);
+var setDesc = __webpack_require__(4).f;
+var id = 0;
+var isExtensible = Object.isExtensible || function () {
+  return true;
+};
+var FREEZE = !__webpack_require__(14)(function () {
+  return isExtensible(Object.preventExtensions({}));
+});
+var setMeta = function (it) {
+  setDesc(it, META, { value: {
+    i: 'O' + ++id, // object ID
+    w: {}          // weak collections IDs
+  } });
+};
+var fastKey = function (it, create) {
+  // return primitive with prefix
+  if (!isObject(it)) return typeof it == 'symbol' ? it : (typeof it == 'string' ? 'S' : 'P') + it;
+  if (!has(it, META)) {
+    // can't set metadata to uncaught frozen object
+    if (!isExtensible(it)) return 'F';
+    // not necessary to add metadata
+    if (!create) return 'E';
+    // add missing metadata
+    setMeta(it);
+  // return object ID
+  } return it[META].i;
+};
+var getWeak = function (it, create) {
+  if (!has(it, META)) {
+    // can't set metadata to uncaught frozen object
+    if (!isExtensible(it)) return true;
+    // not necessary to add metadata
+    if (!create) return false;
+    // add missing metadata
+    setMeta(it);
+  // return hash weak collections IDs
+  } return it[META].w;
+};
+// add metadata on freeze-family methods calling
+var onFreeze = function (it) {
+  if (FREEZE && meta.NEED && isExtensible(it) && !has(it, META)) setMeta(it);
+  return it;
+};
+var meta = module.exports = {
+  KEY: META,
+  NEED: false,
+  fastKey: fastKey,
+  getWeak: getWeak,
+  onFreeze: onFreeze
+};
+
+
+/***/ }),
+/* 136 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// all enumerable object keys, includes symbols
+var getKeys = __webpack_require__(24);
+var gOPS = __webpack_require__(44);
+var pIE = __webpack_require__(31);
+module.exports = function (it) {
+  var result = getKeys(it);
+  var getSymbols = gOPS.f;
+  if (getSymbols) {
+    var symbols = getSymbols(it);
+    var isEnum = pIE.f;
+    var i = 0;
+    var key;
+    while (symbols.length > i) if (isEnum.call(it, key = symbols[i++])) result.push(key);
+  } return result;
+};
+
+
+/***/ }),
+/* 137 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// 7.2.2 IsArray(argument)
+var cof = __webpack_require__(42);
+module.exports = Array.isArray || function isArray(arg) {
+  return cof(arg) == 'Array';
+};
+
+
+/***/ }),
+/* 138 */
+/***/ (function(module, exports, __webpack_require__) {
+
+// fallback for IE11 buggy Object.getOwnPropertyNames with iframe and window
+var toIObject = __webpack_require__(6);
+var gOPN = __webpack_require__(45).f;
+var toString = {}.toString;
+
+var windowNames = typeof window == 'object' && window && Object.getOwnPropertyNames
+  ? Object.getOwnPropertyNames(window) : [];
+
+var getWindowNames = function (it) {
+  try {
+    return gOPN(it);
+  } catch (e) {
+    return windowNames.slice();
+  }
+};
+
+module.exports.f = function getOwnPropertyNames(it) {
+  return windowNames && toString.call(it) == '[object Window]' ? getWindowNames(it) : gOPN(toIObject(it));
+};
+
+
+/***/ }),
+/* 139 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var pIE = __webpack_require__(31);
+var createDesc = __webpack_require__(15);
+var toIObject = __webpack_require__(6);
+var toPrimitive = __webpack_require__(22);
+var has = __webpack_require__(2);
+var IE8_DOM_DEFINE = __webpack_require__(37);
+var gOPD = Object.getOwnPropertyDescriptor;
+
+exports.f = __webpack_require__(5) ? gOPD : function getOwnPropertyDescriptor(O, P) {
+  O = toIObject(O);
+  P = toPrimitive(P, true);
+  if (IE8_DOM_DEFINE) try {
+    return gOPD(O, P);
+  } catch (e) { /* empty */ }
+  if (has(O, P)) return createDesc(!pIE.f.call(O, P), O[P]);
+};
+
+
+/***/ }),
+/* 140 */
+/***/ (function(module, exports) {
+
+
+
+/***/ }),
+/* 141 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(30)('asyncIterator');
+
+
+/***/ }),
+/* 142 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(30)('observable');
+
+
+/***/ }),
+/* 143 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -41963,6 +43547,8 @@ var render = function() {
             "v-map",
             { attrs: { zoom: _vm.zoom, center: _vm.center } },
             [
+              _c("v-control-layers", { attrs: { position: "topright" } }),
+              _vm._v(" "),
               _vm._l(_vm.tileProviders, function(tileProvider) {
                 return _c("v-tile-layer", {
                   key: tileProvider.name,
@@ -41973,6 +43559,18 @@ var render = function() {
                     attribution: tileProvider.attribution,
                     token: _vm.token,
                     "layer-type": "base"
+                  }
+                })
+              }),
+              _vm._v(" "),
+              _vm._l(_vm.googleProviders, function(tileProvider) {
+                return _c("v-tilelayer-googlemutant", {
+                  key: tileProvider.name,
+                  attrs: {
+                    name: tileProvider.name,
+                    visible: tileProvider.visible,
+                    apikey: _vm.field.googleApiKey,
+                    options: _vm.googleMapOptions
                   }
                 })
               }),
@@ -42015,15 +43613,15 @@ if (false) {
 }
 
 /***/ }),
-/* 74 */
+/* 144 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var disposed = false
-var normalizeComponent = __webpack_require__(2)
+var normalizeComponent = __webpack_require__(17)
 /* script */
-var __vue_script__ = __webpack_require__(75)
+var __vue_script__ = __webpack_require__(145)
 /* template */
-var __vue_template__ = __webpack_require__(77)
+var __vue_template__ = __webpack_require__(147)
 /* template functional */
 var __vue_template_functional__ = false
 /* styles */
@@ -42062,12 +43660,12 @@ module.exports = Component.exports
 
 
 /***/ }),
-/* 75 */
+/* 145 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_laravel_nova__ = __webpack_require__(76);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_laravel_nova__ = __webpack_require__(146);
 /* harmony import */ var __WEBPACK_IMPORTED_MODULE_0_laravel_nova___default = __webpack_require__.n(__WEBPACK_IMPORTED_MODULE_0_laravel_nova__);
 //
 //
@@ -42119,7 +43717,7 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 });
 
 /***/ }),
-/* 76 */
+/* 146 */
 /***/ (function(module, exports, __webpack_require__) {
 
 (function webpackUniversalModuleDefinition(root, factory) {
@@ -52346,7 +53944,7 @@ module.exports = g;
 });
 
 /***/ }),
-/* 77 */
+/* 147 */
 /***/ (function(module, exports, __webpack_require__) {
 
 var render = function() {
@@ -52400,7 +53998,7 @@ if (false) {
 }
 
 /***/ }),
-/* 78 */
+/* 148 */
 /***/ (function(module, exports) {
 
 // removed by extract-text-webpack-plugin

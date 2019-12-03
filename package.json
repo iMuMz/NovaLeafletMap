@@ -15,9 +15,11 @@
         "laravel-nova": "^1.0"
     },
     "dependencies": {
-        "leaflet": "^1.5.1",
+        "leaflet": "^1.6.0",
+        "leaflet.gridlayer.googlemutant": "^0.8.0",
         "vue": "^2.5.0",
-        "vue2-leaflet": "^2.1.1",
+        "vue2-leaflet": "^2.2.1",
+        "vue2-leaflet-googlemutant": "^2.0.0",
         "vue2-leaflet-markercluster": "^3.0.0"
     }
 }

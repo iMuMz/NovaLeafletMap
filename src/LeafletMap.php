@@ -62,5 +62,25 @@ class LeafletMap extends Field
         ]);
     }
 
+    /*public function html($html) {
+        return $this->withMeta([
+            'html' => $html,
+        ]);
+    }*/
+
+    public function googleApiKey($googleApiKey) {
+
+        return $this->withMeta([
+            'googleApiKey' => $googleApiKey
+        ]);
+    }
+
+    public function googleMapType($googleMapType) {
+
+        return $this->withMeta([
+            'googleMapType' => $googleMapType
+        ]);
+    }
+
 
 }
