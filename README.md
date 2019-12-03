@@ -4,7 +4,7 @@
 # NovaLeafletMap
 Custom [Laravel Nova](https://nova.laravel.com/) map field using [Vue2Leaflet](https://korigan.github.io/Vue2Leaflet). Supports marker clustering, height, zoom, latitude and longitude coordinates, GeoJSON, marker popup and custom marker icon.
 
-![image](https://user-images.githubusercontent.com/22936672/62364289-5cfacf80-b521-11e9-8c98-584c3978573d.png)
+![image](https://user-images.githubusercontent.com/22936672/70048646-75fcb580-15d3-11ea-9b49-517cc09c11f6.png)
 
 ### Installation
 
@@ -29,6 +29,15 @@ LeafletMap::make('Map View')
 ```
 LeafletMap::make('Map View')
 ->height('400px')
+```
+#### Google Maps
+By default the provider is OpenStreetMaps.<br> 
+You must set your Google Maps API key (https://developers.google.com/maps/documentation/javascript/get-api-key).
+```
+LeafletMap::make('Map View')
+->height('400px')
+->googleApiKey('')
+->googleMapType('roadmap'), // roadmap, satellite or hybrid
 ```
 #### LatLon
 The map will automatically center to the Lat/Lon provided.
