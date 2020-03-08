@@ -14,6 +14,15 @@
                     <!-- Layer Control -->
                     <v-control-layers position="topright"/>
 
+                    <!-- Google Maps -->
+                    <v-tilelayer-googlemutant v-for="tileProvider in googleProviders"
+                    :key="tileProvider.name"
+                    :name="tileProvider.name"
+                    :visible="tileProvider.visible"
+                    :apikey="field.googleApiKey" 
+                    :options="googleMapOptions"
+                    />
+
                     <!-- Tile Layer Groups -->
                     <v-tile-layer
                     v-for="tileProvider in tileProviders"
@@ -24,15 +33,6 @@
                     :attribution="tileProvider.attribution"
                     :token="token"
                     layer-type="base"/>
-
-                    <!-- Google Maps -->
-                    <v-tilelayer-googlemutant v-for="tileProvider in googleProviders"
-                    :key="tileProvider.name"
-                    :name="tileProvider.name"
-                    :visible="tileProvider.visible"
-                    :apikey="field.googleApiKey" 
-                    :options="googleMapOptions"
-                    />
 
                     <!-- Marker Clustering -->
                     <v-marker-cluster :options="clusterOptions" @clusterclick="click()">
@@ -97,8 +97,18 @@ export default {
       let googleMapOptions = {
         type: this.field.googleMapType
       }
-
+      
+      var visibleYesNoGoogle
+      var visibleYesNoLeaflet
       var iniLocation = ''
+
+      if (this.field.googleApiKey && this.field.googleMapType) {
+          visibleYesNoGoogle = true
+          visibleYesNoLeaflet = false
+      } else {
+          visibleYesNoGoogle = false
+          visibleYesNoLeaflet = true
+      }
 
       if (this.field.type == "GeoJson") {
           iniLocation = latLng(this.field.centerLat,this.field.centerLon)
@@ -175,7 +185,7 @@ export default {
         tileProviders: [
             {
                 name: 'OpenStreetMap',
-                visible: true,
+                visible: visibleYesNoLeaflet,
                 attribution: '&copy; <a target="_blank" href="http://osm.org/copyright">OpenStreetMap</a> contributors',
                 url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
             },
@@ -183,7 +193,7 @@ export default {
         googleProviders: [
             {
                 name: 'Google',
-                visible: false
+                visible: visibleYesNoGoogle
             }
         ],
 
@@ -205,7 +215,7 @@ export default {
 </script>
 <style>
 .leaflet-control-layers-toggle {
-    background-image: url('../../../dist/images/vendor/leaflet/dist/layers.png');
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaCAQAAAADQ4RFAAACf0lEQVR4AY1UM3gkARTePdvdoTxXKc+qTl3aU5U6b2Kbkz3Gtq3Zw6ziLGNPzrYx7946Tr6/ee/XeCQ4D3ykPtL5tHno4n0d/h3+xfuWHGLX81cn7r0iTNzjr7LrlxCqPtkbTQEHeqOrTy4Yyt3VCi/IOB0v7rVC7q45Q3Gr5K6jt+3Gl5nCoDD4MtO+j96Wu8atmhGqcNGHObuf8OM/x3AMx38+4Z2sPqzCxRFK2aF2e5Jol56XTLyggAMTL56XOMoS1W4pOyjUcGGQdZxU6qRh7B9Zp+PfpOFlqt0zyDZckPi1ttmIp03jX8gyJ8a/PG2yutpS/Vol7peZIbZcKBAEEheEIAgFbDkz5H6Zrkm2hVWGiXKiF4Ycw0RWKdtC16Q7qe3X4iOMxruonzegJzWaXFrU9utOSsLUmrc0YjeWYjCW4PDMADElpJSSQ0vQvA1Tm6/JlKnqFs1EGyZiFCqnRZTEJJJiKRYzVYzJck2Rm6P4iH+cmSY0YzimYa8l0EtTODFWhcMIMVqdsI2uiTvKmTisIDHJ3od5GILVhBCarCfVRmo4uTjkhrhzkiBV7SsaqS+TzrzM1qpGGUFt28pIySQHR6h7F6KSwGWm97ay+Z+ZqMcEjEWebE7wxCSQwpkhJqoZA5ivCdZDjJepuJ9IQjGGUmuXJdBFUygxVqVsxFsLMbDe8ZbDYVCGKxs+W080max1hFCarCfV+C1KATwcnvE9gRRuMP2prdbWGowm1KB1y+zwMMENkM755cJ2yPDtqhTI6ED1M/82yIDtC/4j4BijjeObflpO9I9MwXTCsSX8jWAFeHr05WoLTJ5G8IQVS/7vwR6ohirYM7f6HzYpogfS3R2OAAAAAElFTkSuQmCC') !important;
 }
 .leaflet-popup-content-wrapper {
     border-radius: 1px;
