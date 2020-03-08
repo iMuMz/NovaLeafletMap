@@ -2,7 +2,7 @@
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/iMuMz/NovaLeafletMap?color=yellow&style=flat-square)
 ![Packagist](https://img.shields.io/packagist/dt/otrsw/leaflet-map?color=green&logo=testing&style=flat-square)
 # NovaLeafletMap
-Custom [Laravel Nova](https://nova.laravel.com/) map field using [Vue2Leaflet](https://korigan.github.io/Vue2Leaflet). Supports marker clustering, height, zoom, latitude and longitude coordinates, GeoJSON, marker popup and custom marker icon.
+Custom [Laravel Nova](https://nova.laravel.com/) map field using [Vue2Leaflet](https://korigan.github.io/Vue2Leaflet). Supports Google Maps, marker clustering, height, zoom, latitude and longitude coordinates, GeoJSON, marker popup and custom marker icon.
 
 ![image](https://user-images.githubusercontent.com/22936672/70048646-75fcb580-15d3-11ea-9b49-517cc09c11f6.png)
 
