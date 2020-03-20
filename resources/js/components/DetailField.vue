@@ -224,6 +224,6 @@ export default {
     box-shadow: 0 0 7px #999!important;
 }
 .vue2leaflet-map {
-    z-index: 1;
+    z-index: 0;
 }
 </style>
