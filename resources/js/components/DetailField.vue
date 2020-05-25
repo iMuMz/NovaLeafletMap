@@ -34,10 +34,19 @@
                     :token="token"
                     layer-type="base"/>
 
-                    <!-- Marker Clustering -->
+                    <!--<v-layer-group 
+                    layer-type="overlay"
+                    name="Sources"
+                    :visible="true">
                     <v-marker-cluster :options="clusterOptions" @clusterclick="click()">
                     <v-geo-json v-for="geoJson in geoJsons" :key="geoJson.id" :geojson="geoJson" :options="options"/>
                     </v-marker-cluster>
+                    </v-layer-group>-->
+
+                    <v-marker-cluster :options="clusterOptions" @clusterclick="click()">
+                    <v-geo-json v-for="geoJson in geoJsons" :key="geoJson.id" :geojson="geoJson" :options="options"/>
+                    </v-marker-cluster>
+                   
 
                 </v-map>
             </div>
@@ -51,7 +60,7 @@ import 'leaflet/dist/leaflet.css';
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
-import { LMap, LTileLayer, LMarker, LPopup, LControlLayers, LGridLayer,LGeoJson,LIconDefault } from 'vue2-leaflet';
+import { LMap, LTileLayer, LMarker, LPopup, LControlLayers, LGridLayer,LGeoJson, LIconDefault, LLayerGroup } from 'vue2-leaflet';
 import { latLng, Icon, icon } from 'leaflet';
 import Vue2LeafletMarkercluster from 'vue2-leaflet-markercluster'
 import Vue2LeafletGoogleMutant from 'vue2-leaflet-googlemutant'
@@ -82,7 +91,8 @@ export default {
       'v-marker-cluster': Vue2LeafletMarkercluster,
       'v-control-layers': LControlLayers,
       'v-geo-json': LGeoJson,
-      'v-tilelayer-googlemutant': Vue2LeafletGoogleMutant
+      'v-tilelayer-googlemutant': Vue2LeafletGoogleMutant,
+      'v-layer-group' : LLayerGroup
     },
     methods: {
       click: function (e) {
@@ -101,6 +111,15 @@ export default {
       var visibleYesNoGoogle
       var visibleYesNoLeaflet
       var iniLocation = ''
+
+      function IsJsonString(str) {
+            try {
+                JSON.parse(str);
+            } catch (e) {
+                return geoJsons.push(str);
+            }
+            return geoJsons.push(JSON.parse(str));
+        }
 
       if (this.field.googleApiKey && this.field.googleMapType) {
           visibleYesNoGoogle = true
@@ -132,10 +151,11 @@ export default {
             })
 
         }
+
             
      if (this.field.type == "GeoJson") {
 
-        geoJsons.push(JSON.parse(this.field.geoJson))
+          IsJsonString(this.field.geoJson)
             
         } else if (this.field.type == "LatLon") {
 
@@ -160,8 +180,8 @@ export default {
         
         popupName = this.field.popupName
         //console.log(this.field.popupName)
-     
-      
+
+    
       return {
         options : {
         onEachFeature: function (feature, layer) {
@@ -206,12 +226,13 @@ export default {
           this.clusterOptions = { disableClusteringAtZoom: 11 }
         });
       }, 5000);
-      console.log('Removing Google...')
+      //console.log('Removing Google...')
       if (this.field.googleApiKey == null) {
         this.googleProviders = []
       }
     }
   }
+
 </script>
 <style>
 .leaflet-control-layers-toggle {
