@@ -19,7 +19,7 @@ use Otrsw\LeafletMap\LeafletMap
 LeafletMap::make('Map View')
 ```
 ### Available Methods
-You must set the height for the map to show.
+
 #### Zoom
 ```
 LeafletMap::make('Map View')
@@ -28,7 +28,7 @@ LeafletMap::make('Map View')
 #### Height
 ```
 LeafletMap::make('Map View')
-->height('400px')
+->height('400px') // default is 300px
 ```
 #### Google Maps
 By default the provider is OpenStreetMaps.<br> 
@@ -39,8 +39,8 @@ LeafletMap::make('Map View')
 ->googleApiKey('')
 ->googleMapType('roadmap'), // roadmap, satellite or hybrid
 ```
-#### LatLon
-The map will automatically center to the Lat/Lon provided.
+#### Latitude / Longitude (Point)
+The map will automatically center to the coordinates provided.
 ```
 LeafletMap::make('Map View')
 ->type('LatLon')
