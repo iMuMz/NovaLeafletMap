@@ -8,7 +8,7 @@
             </slot>
         </div>
         <div class="w-3/4 py-4">
-            <div class="rounded flex flex-col" :style="'height: ' + field.height">
+            <div class="rounded flex flex-col" :style="'height: ' + this.mapHeight">
                 <v-map :zoom="zoom" :center="center">
 
                     <!-- Layer Control -->
@@ -100,17 +100,24 @@ export default {
       }
     },
     data () {
+      var mapHeight
       var iconMarker
       var popupName
+      var visibleYesNoGoogle
+      var visibleYesNoLeaflet
+      var iniLocation = ''
       let geoJsons = []
       let featureType = this.field.type
       let googleMapOptions = {
         type: this.field.googleMapType
       }
       
-      var visibleYesNoGoogle
-      var visibleYesNoLeaflet
-      var iniLocation = ''
+
+    if (!this.field.height) {
+        this.mapHeight = '300px'
+    } else {
+        this.mapHeight = this.field.height
+    }
 
       function IsJsonString(str) {
             try {
@@ -188,7 +195,7 @@ export default {
             //console.log("type: " + featureType)
             if (featureType == 'LatLon') {
                 layer.bindPopup(feature.properties.popupContent)
-            //console.log(feature.properties.popupContent)
+                //console.log(feature.properties.popupContent)
             } else if (featureType == 'GeoJson') {
                 layer.bindPopup(feature.properties[popupName])
             }

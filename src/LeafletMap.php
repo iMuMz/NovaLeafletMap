@@ -15,12 +15,12 @@ class LeafletMap extends Field
      */
     public $component = 'leaflet-map';
 
-    public function height($height = '300px'){
+    public function height($height){
         return $this->withMeta([
             'height' => $height
         ]);
     }
-    public function zoom($zoom = 13){
+    public function zoom($zoom){
         return $this->withMeta([
             'zoom' => $zoom
         ]);
