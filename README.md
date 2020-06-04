@@ -35,7 +35,6 @@ By default the provider is OpenStreetMaps.<br>
 You must set your Google Maps API key (https://developers.google.com/maps/documentation/javascript/get-api-key).
 ```
 LeafletMap::make('Map View')
-->height('400px')
 ->googleApiKey('')
 ->googleMapType('roadmap'), // roadmap, satellite or hybrid
 ```
@@ -61,7 +60,9 @@ LeafletMap::make('Map View')
   "features": [
     {
       "type": "Feature",
-      "properties": {},
+      "properties": {
+        "popup": "I am a Popup"
+      },
       "geometry": {
         "type": "Point",
         "coordinates": [
@@ -77,7 +78,7 @@ LeafletMap::make('Map View')
 #### Popup
 ```
 LeafletMap::make('Map View')
-->popupName('My Popup Value')
+->popupName('popup')
 ```
 #### Custom Marker Icon
 ```
