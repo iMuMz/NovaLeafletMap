@@ -85,3 +85,9 @@ LeafletMap::make('Map View')
 LeafletMap::make('Map View')
 ->mapIconUrl('/images/marker-icon.png')
 ```
+You can now pass additional parameters to set the icon size and anchor
+```
+->mapIconUrl('/images/marker-icon.png',[100,100],[50,50])
+```
+![Screenshot 2020-10-06 at 10 09 14](https://user-images.githubusercontent.com/22936672/95176131-b6612d00-07bc-11eb-8b1e-3489bb242a37.png)
+
