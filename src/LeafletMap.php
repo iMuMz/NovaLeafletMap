@@ -3,6 +3,7 @@
 namespace Otrsw\LeafletMap;
 
 use Laravel\Nova\Fields\Field;
+use Log;
 
 class LeafletMap extends Field
 {
@@ -31,10 +32,12 @@ class LeafletMap extends Field
             'geoJson' => $geoJson
         ]);
     }
-    public function mapIconUrl($mapIconUrl){
+    public function mapIconUrl($mapIconUrl,$mapIconSize = null,$mapIconAnchor = null){
 
         return $this->withMeta([
-            'mapIconUrl' => $mapIconUrl
+            'mapIconUrl' => $mapIconUrl,
+            'mapIconSize' => $mapIconSize,
+            'mapIconAnchor' => $mapIconAnchor
         ]);
     }
 
