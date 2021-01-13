@@ -193,7 +193,7 @@ export default {
                 layer.bindPopup(feature.properties.popupContent)
                 //console.log(feature.properties.popupContent)
             } else if (featureType == 'GeoJson') {
-                layer.bindPopup(feature.properties[popupName])
+                layer.bindPopup(feature.properties.popup)
             }
             //console.log(popupName)
           }
