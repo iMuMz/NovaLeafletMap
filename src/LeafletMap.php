@@ -1,9 +1,8 @@
 <?php
 
-namespace Otrsw\LeafletMap;
+namespace Imumz\LeafletMap;
 
 use Laravel\Nova\Fields\Field;
-use Log;
 
 class LeafletMap extends Field
 {

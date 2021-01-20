@@ -1,5 +1,5 @@
 {
-    "name": "otrsw/leaflet-map",
+    "name": "imumz/leaflet-map",
     "description": "A Laravel Nova field.",
     "keywords": [
         "laravel",
@@ -11,13 +11,13 @@
     },
     "autoload": {
         "psr-4": {
-            "Otrsw\\LeafletMap\\": "src/"
+            "Imumz\\LeafletMap\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Otrsw\\LeafletMap\\FieldServiceProvider"
+                "Imumz\\LeafletMap\\FieldServiceProvider"
             ]
         }
     },

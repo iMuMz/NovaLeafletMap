@@ -1,6 +1,6 @@
 <?php
 
-namespace Otrsw\LeafletMap;
+namespace Imumz\LeafletMap;
 
 use Laravel\Nova\Nova;
 use Laravel\Nova\Events\ServingNova;
