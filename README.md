@@ -6,9 +6,6 @@ Custom [Laravel Nova](https://nova.laravel.com/) map field using [Vue2Leaflet](h
 
 Looking for a Laravel Nova map card? (https://github.com/iMuMz/NovaMapCard)
 
-### Please Note
-From version ```1.1``` the vendor name has changed from ```otrsw``` to ```imumz``` - https://packagist.org/packages/imumz/leaflet-map
-
 ![image](https://user-images.githubusercontent.com/22936672/83330778-dd997200-a291-11ea-997d-39f10e520b91.png)
 
 ### Installation
